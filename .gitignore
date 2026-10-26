@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+
+# Node / frontend build output
+node_modules/
+dist/
+coverage/
+
+# Local development server output
+*-server.log
+*-server-error.log
+
+# Environment and local data
+.env
+.env.*
+!.env.example
+data/
+
+# Editors and operating systems
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
