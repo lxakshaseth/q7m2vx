@@ -21,7 +21,7 @@ ranges before an upstream request is attempted.
 
 Response JSON uses camelCase. Every response identifies the delivery range,
 retrieval range, source URLs, data-quality counts, decision rule, and cadence
-transformation.
+matching policy.
 
 ## Adjustable demo assumption
 
@@ -70,11 +70,11 @@ Duplicate handling follows the observed source semantics:
   are treated as invalid upstream data; the service does not guess.
 
 FUELHH is natively half-hourly while WINDFOR is natively hourly. After selecting
-one forecast version for a native hour, the backend repeats that value over the
-matching `:00` and `:30` half-hours. Responses label this as
-`hourly WINDFOR repeated to half-hour intervals` and retain
-`nativeForecastStartUtc`, so the repeated value cannot be mistaken for a native
-half-hour forecast.
+one forecast version for a native hour, the backend joins it only to the FUELHH
+row with the identical normalized UTC `startTime`. Intervening `:30` rows remain
+explicitly `missing_forecast`; no forecast is repeated, interpolated, or carried
+forward. A complete January therefore has 744 exact matches across 1,488 actual
+half-hour rows, or 50% forecast coverage.
 
 ## Metrics and missing data
 
@@ -131,6 +131,17 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r .\backend\requirements-dev.txt
 .\.venv\Scripts\python.exe -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
+
+That command is for a PowerShell prompt at the repository root. If you are
+already in the `backend` directory, retain the `backend.app.main:app` import
+path and add the parent directory explicitly:
+
+```powershell
+.\.venv\Scripts\python.exe -m uvicorn backend.app.main:app --app-dir .. --host 127.0.0.1 --port 8000 --reload
+```
+
+Without `--app-dir ..`, Python searches from `backend` itself and cannot find
+the top-level `backend` package.
 
 In a second PowerShell window:
 

@@ -42,7 +42,7 @@ Compose is deliberately a development-only two-service arrangement: source mount
 3. On a miss, it requests FUELHH with settlementDateFrom, settlementDateTo, and fuelType=WIND.
 4. It requests WINDFOR with a bounded publication-time history using publishDateTimeFrom and publishDateTimeTo, then filters delivery startTime locally.
 5. For every native forecast hour, it selects the greatest publishTime at or before that delivery date’s preceding-local-day cut-off.
-6. It normalises actual revisions, repeats the selected hourly forecast to its matching two half-hours, and joins exact UTC delivery-start keys.
+6. It normalises actual revisions and joins selected forecasts to actuals only on identical UTC `startTime` keys; hourly WINDFOR has no value for intervening `:30` FUELHH rows.
 7. It calculates metrics from matched pairs only, returns explicit coverage/data-quality counts, and React renders the result.
 
 ## API surface
@@ -70,7 +70,7 @@ metadata: delivery/publication ranges, adjustable cut-off assumption,
 - Forecasts published exactly at the cut-off are eligible; later records are excluded.
 - FUELHH duplicates are resolved with the latest actual publication, while forecast versions remain available for selection.
 - Missing source values are not interpolated, fabricated, or silently included in metrics.
-- The hourly-to-half-hour forecast expansion is exposed in the response and interface.
+- The hourly/half-hourly cadence mismatch is exposed through missing-forecast rows and coverage; no forecast value is expanded or interpolated.
 - API validation prevents malformed query values from triggering broad source requests.
 
 ## Containers and deployment

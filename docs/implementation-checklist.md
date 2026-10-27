@@ -8,7 +8,7 @@ This document records the implementation state after the final local verificatio
 - [x] Built an HTTPX Elexon client with bounded timeouts, retries, response validation, and in-memory caching.
 - [x] Normalised timestamps and duplicate/revision semantics.
 - [x] Implemented latest-at-or-before day-before-cut-off forecast selection in Europe/London.
-- [x] Implemented explicit hourly WINDFOR to half-hour FUELHH expansion.
+- [x] Implemented exact UTC `startTime` matching while preserving unmatched `:30` FUELHH intervals as missing forecasts.
 - [x] Implemented MAE, RMSE, WAPE, bias, coverage, and missing-data reporting.
 - [x] Built FastAPI health, dashboard, intervals, and metrics routes with typed response models and sanitised errors.
 - [x] Built the React/Vite dashboard with controls, KPIs, charts, audit table, empty/loading/error states, and quality notes.
@@ -22,14 +22,17 @@ This document records the implementation state after the final local verificatio
 
 ## Completed verification
 
-- [x] Backend suite: 57 passed in 1.05 seconds in the Python 3.12 development container.
+- [x] Backend suite: 57 passed in 1.16 seconds in the local Python 3.12 environment.
 - [x] Frontend production build: passed with Vite 6.4.5.
-- [x] Root production image: built and ran with a non-default PORT.
-- [x] Production homepage: HTTP 200 Vite app shell.
-- [x] Production /api/health: HTTP 200 JSON.
-- [x] Unknown production /api route: JSON HTTP 404, not SPA HTML.
-- [x] Production live analysis request for 2026-01-15 at 12:00: HTTP 200, 48 matched intervals and 100% coverage.
-- [x] Docker Compose configuration, builds, backend health, frontend homepage, and proxied /api health: passed.
+- [x] Production-style FastAPI/Vite homepage: HTTP 200 with the correct application title.
+- [x] `/api/health`: HTTP 200 JSON.
+- [x] Unknown `/api` route: JSON HTTP 404, not SPA HTML.
+- [x] Production live analysis request for 2026-01-15 at 12:00: HTTP 200, 24 of 48 intervals matched and 50% coverage.
+- [x] Full January live source audit: 1,488 FUELHH rows, 21,389 raw configured-window WINDFOR rows, 17,711 January-target versions retained, and all 744 hourly targets selected.
+- [x] Full January live metrics: 744 of 1,488 intervals matched and 50% exact-start coverage.
+- [x] Browser QA: wind dashboard, six KPIs, charts, audit table, missing forecasts, and source/method notes rendered correctly.
+- [x] Docker Compose configuration: valid.
+- [ ] Docker image build/run: Docker Desktop's Linux engine was not running during the final check.
 
 ## Remaining human-owned submission actions
 

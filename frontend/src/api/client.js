@@ -77,7 +77,7 @@ async function request(path, { query, signal } = {}) {
 
 /**
  * Request the backend's already-calculated day view. Forecast selection,
- * cadence expansion and metrics deliberately remain server-side.
+ * exact startTime matching and metrics deliberately remain server-side.
  */
 export function getDailyAnalysis({ deliveryDate, decisionCutoffTime, signal }) {
   return request("/intervals", {

@@ -8,7 +8,6 @@ from backend.app.domain import ActualRecord, DecisionCutoffError, ForecastRecord
 from backend.app.services.forecast_selection import (
     build_interval_matches,
     decision_cutoff_for_date,
-    expand_hourly_forecasts,
     select_day_before_forecasts,
 )
 
@@ -54,20 +53,16 @@ def test_missing_eligible_forecast_remains_missing() -> None:
     assert result.missing_target_count == 2
 
 
-def test_selected_hour_is_expanded_to_exactly_two_half_hours() -> None:
+def test_selected_hour_retains_only_its_native_start_time() -> None:
     selected = select_day_before_forecasts(
         [forecast("2026-01-14T12:00:00Z", 110)],
         [utc("2026-01-15T12:00:00Z")],
         time(12, 0),
     ).selected
-    expanded = expand_hourly_forecasts(selected)
 
-    assert [item.delivery_start for item in expanded] == [
-        utc("2026-01-15T12:00:00Z"),
-        utc("2026-01-15T12:30:00Z"),
-    ]
-    assert all(item.native_start_time == utc("2026-01-15T12:00:00Z") for item in expanded)
-    assert all(item.publish_time == utc("2026-01-14T12:00:00Z") for item in expanded)
+    assert len(selected) == 1
+    assert selected[0].native_start_time == utc("2026-01-15T12:00:00Z")
+    assert selected[0].publish_time == utc("2026-01-14T12:00:00Z")
 
 
 def test_london_cutoff_uses_dst_offset_in_summer() -> None:
@@ -87,25 +82,31 @@ def test_matching_uses_equal_half_hour_keys_and_preserves_missing_rows() -> None
     selected = select_day_before_forecasts(
         [forecast("2026-01-14T12:00:00Z", 110)], [target], time(12, 0)
     ).selected
-    expanded = expand_hourly_forecasts(selected)
-    actual = ActualRecord(
+    actual_on_hour = ActualRecord(
         start_time=target,
         publish_time=utc("2026-01-15T12:30:00Z"),
         generation_mw=100,
         settlement_date=date(2026, 1, 15),
         settlement_period=25,
     )
+    actual_half_hour = ActualRecord(
+        start_time=utc("2026-01-15T12:30:00Z"),
+        publish_time=utc("2026-01-15T13:00:00Z"),
+        generation_mw=105,
+        settlement_date=date(2026, 1, 15),
+        settlement_period=26,
+    )
     matches = build_interval_matches(
         [target, utc("2026-01-15T12:30:00Z")],
-        [actual],
-        expanded,
+        [actual_on_hour, actual_half_hour],
+        selected,
         time(12, 0),
     )
 
     assert matches[0].status == "matched"
     assert matches[0].error_mw == 10
-    assert matches[1].status == "missing_actual"
-    assert matches[1].forecast is not None
+    assert matches[1].status == "missing_forecast"
+    assert matches[1].forecast is None
     assert all(
         item.forecast is None
         or item.forecast.publish_time <= item.decision_cutoff_utc
@@ -140,12 +141,12 @@ def test_matching_uses_delivery_start_not_publication_time() -> None:
     matches = build_interval_matches(
         [actual_start],
         [actual],
-        expand_hourly_forecasts(selected),
+        selected,
         time(12, 0),
     )
 
     assert matches[0].status == "matched"
     assert matches[0].forecast is not None
     assert matches[0].forecast.generation_mw == 110
-    assert matches[0].forecast.delivery_start == actual_start
+    assert matches[0].forecast.native_start_time == actual_start
     assert matches[0].forecast.publish_time != actual_start

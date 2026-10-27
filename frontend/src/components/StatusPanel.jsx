@@ -24,7 +24,7 @@ export function LoadingDashboard() {
         </div>
       </div>
       <div className="loading-metrics" aria-hidden="true">
-        {Array.from({ length: 5 }, (_, index) => (
+        {Array.from({ length: 6 }, (_, index) => (
           <div className="loading-card" key={index} />
         ))}
       </div>

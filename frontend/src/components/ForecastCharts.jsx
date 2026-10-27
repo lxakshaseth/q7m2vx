@@ -28,7 +28,6 @@ function buildChartData(intervals) {
     error: interval.errorMw,
     status: interval.status,
     forecastPublishTime: interval.forecastPublishTimeLocal,
-    forecastWasExpanded: interval.forecastWasExpanded,
   }));
 }
 
@@ -68,13 +67,10 @@ function GenerationTooltip({ active, payload }) {
           <dd>
             {point.forecastPublishTime
               ? `${formatDateTime(point.forecastPublishTime)} UK local`
-              : "No eligible forecast"}
+              : "No forecast matched at this start time"}
           </dd>
         </div>
       </dl>
-      {point.forecastWasExpanded ? (
-        <p className="chart-tooltip__note">Hourly forecast repeated for this half-hour.</p>
-      ) : null}
     </TooltipShell>
   );
 }
@@ -127,8 +123,8 @@ export function ForecastCharts({ intervals }) {
           <h2 id="charts-heading">Delivery-day profile</h2>
         </div>
         <p>
-          Gaps remain blank where an actual value or cutoff-eligible forecast is
-          unavailable.
+          WINDFOR points appear only where their hourly startTime exactly matches the
+          half-hourly actual series. Unmatched :30 intervals remain blank.
         </p>
       </div>
 
@@ -185,7 +181,7 @@ export function ForecastCharts({ intervals }) {
                     stroke="#ef8b32"
                     strokeWidth={2.5}
                     strokeDasharray="6 4"
-                    dot={false}
+                    dot={{ r: 2.5, fill: "#ef8b32", strokeWidth: 0 }}
                     activeDot={{ r: 4 }}
                     connectNulls={false}
                     isAnimationActive={false}

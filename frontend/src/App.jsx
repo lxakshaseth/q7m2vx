@@ -41,7 +41,7 @@ function MetricSummary({ metrics }) {
           label="Mean Absolute Error (MAE)"
           value={formatMw(metrics.maeMw)}
           unit="MW"
-          detail="Typical half-hourly miss"
+          detail="Typical miss across matched intervals"
           status="teal"
         />
         <MetricCard
@@ -67,14 +67,21 @@ function MetricSummary({ metrics }) {
         />
         <MetricCard
           label="Matched delivery intervals"
-          value={`${metrics.matchedIntervalCount}/${metrics.actualIntervalCount}`}
-          unit={metrics.forecastCoveragePercent === null ? "" : `${formatPercent(metrics.forecastCoveragePercent)}% coverage`}
+          value={metrics.matchedIntervalCount}
+          unit={`of ${metrics.expectedIntervalCount} expected`}
           detail={
             hasMissingIntervals || coverageIsPartial
               ? "Gaps are excluded; see data quality"
               : "All available actual intervals covered"
           }
           status={coverageIsPartial || hasMissingIntervals ? "amber" : "navy"}
+        />
+        <MetricCard
+          label="Forecast coverage"
+          value={formatPercent(metrics.forecastCoveragePercent)}
+          unit={metrics.forecastCoveragePercent === null ? "" : "%"}
+          detail="Matched intervals relative to available actuals"
+          status={coverageIsPartial || hasMissingIntervals ? "amber" : "teal"}
         />
       </div>
     </section>
@@ -102,10 +109,11 @@ function CoverageNotice({ metrics, metadata }) {
 
   if (noMatches) {
     return (
-      <StatusPanel tone="warning" title="No eligible forecast could be matched">
+      <StatusPanel tone="warning" title="No forecast could be matched">
         <p>
-          Actual generation is available, but no forecast met the selected {metadata.decisionCutoffTime}
-          {" "}Europe/London cut-off. No accuracy metric has been calculated.
+          Actual generation is available, but no forecast shares an exact start time
+          and meets the selected {metadata.decisionCutoffTime} Europe/London cut-off.
+          No accuracy metric has been calculated.
         </p>
       </StatusPanel>
     );
@@ -117,7 +125,9 @@ function CoverageNotice({ metrics, metadata }) {
         <p>
           {metrics.matchedIntervalCount} of {metrics.expectedIntervalCount} expected
           half-hourly intervals are matched. The coverage figure is based on available
-          actual intervals; missing values remain visible and are excluded from metrics.
+          actual intervals. WINDFOR is hourly, so exact start-time matching intentionally
+          leaves intervening :30 rows without a forecast; all gaps remain visible and are
+          excluded from metrics.
         </p>
       </StatusPanel>
     );

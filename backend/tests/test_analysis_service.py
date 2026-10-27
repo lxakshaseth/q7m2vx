@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import math
 from datetime import date, datetime, time, timezone
 from typing import Any
 
@@ -65,7 +64,7 @@ def make_settings() -> Settings:
 
 
 @pytest.mark.asyncio
-async def test_service_selects_cutoff_version_and_expands_to_half_hours() -> None:
+async def test_service_selects_cutoff_version_and_matches_exact_start_only() -> None:
     client = FakeClient(
         actuals=[
             fuel_row(
@@ -100,25 +99,26 @@ async def test_service_selects_cutoff_version_and_expands_to_half_hours() -> Non
     ]
     assert len(response.intervals) == 1_488
     first, second = response.intervals[:2]
-    assert first.forecast_mw == second.forecast_mw == 110
+    assert first.forecast_mw == 110
+    assert second.forecast_mw is None
     assert first.forecast_publish_time_utc == datetime(
         2025, 12, 31, 12, tzinfo=timezone.utc
     )
-    assert first.forecast_was_expanded is False
-    assert second.forecast_was_expanded is True
-    assert first.native_forecast_start_utc == second.native_forecast_start_utc
+    assert second.forecast_publish_time_utc is None
     assert first.decision_cutoff_utc == datetime(
         2025, 12, 31, 12, tzinfo=timezone.utc
     )
-    assert response.metrics.matched_interval_count == 2
+    assert response.metrics.matched_interval_count == 1
     assert response.metrics.actual_interval_count == 2
-    assert response.metrics.eligible_forecast_interval_count == 2
-    assert response.metrics.mae_mw == 50
-    assert response.metrics.bias_mw == -40
-    assert response.metrics.wape_percent == pytest.approx(100 / 3)
-    assert response.metrics.rmse_mw == pytest.approx(math.sqrt(4_100))
+    assert response.metrics.eligible_forecast_interval_count == 1
+    assert response.metrics.missing_forecast_interval_count == 1
+    assert response.metrics.forecast_coverage_percent == 50
+    assert response.metrics.mae_mw == 10
+    assert response.metrics.bias_mw == 10
+    assert response.metrics.wape_percent == 10
+    assert response.metrics.rmse_mw == 10
     assert response.metadata.adjustable_demo_assumption is True
-    assert "repeated" in response.metadata.analysis_resolution
+    assert "Exact UTC startTime matching" in response.metadata.analysis_resolution
     assert response.metadata.data_quality.normalized_forecast_version_count == 3
     assert response.metadata.data_quality.selected_native_forecast_count == 1
 
@@ -144,7 +144,10 @@ async def test_missing_forecast_reduces_coverage_without_fabrication() -> None:
     assert response.metrics.matched_interval_count == 0
     assert response.metrics.missing_forecast_interval_count == 1
     assert response.metrics.forecast_coverage_percent == 0
-    assert any("no forecast eligible" in warning for warning in response.metadata.warnings)
+    assert any(
+        "no exact-start forecast selected" in warning
+        for warning in response.metadata.warnings
+    )
 
 
 @pytest.mark.asyncio
@@ -228,7 +231,8 @@ async def test_january_boundaries_include_last_half_hour_and_exclude_february() 
     assert starts[-1] == datetime(2026, 1, 31, 23, 30, tzinfo=timezone.utc)
     assert datetime(2026, 2, 1, tzinfo=timezone.utc) not in starts
     assert response.metrics.actual_interval_count == 2
-    assert response.intervals[-1].forecast_mw == 210
+    assert response.intervals[-1].forecast_mw is None
+    assert response.intervals[-2].forecast_mw == 210
     assert response.intervals[-1].decision_cutoff_utc == datetime(
         2026, 1, 30, 12, tzinfo=timezone.utc
     )

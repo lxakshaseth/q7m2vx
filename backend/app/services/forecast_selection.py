@@ -1,4 +1,4 @@
-"""Day-before forecast selection and explicit hourly-to-half-hour expansion."""
+"""Day-before forecast selection and exact delivery-start matching."""
 
 from __future__ import annotations
 
@@ -11,7 +11,6 @@ from backend.app.domain import (
     ActualRecord,
     DataValidationError,
     DecisionCutoffError,
-    ExpandedForecast,
     ForecastRecord,
     ForecastSelectionResult,
     IntervalMatch,
@@ -177,37 +176,10 @@ def select_day_before_forecasts(
     )
 
 
-def expand_hourly_forecasts(
-    selected: Sequence[SelectedForecast],
-) -> tuple[ExpandedForecast, ...]:
-    """Repeat a selected hourly value over [startTime, startTime + 1 hour)."""
-
-    expanded: dict[datetime, ExpandedForecast] = {}
-    for forecast in selected:
-        native_start = _aware_utc(forecast.native_start_time, "native_start_time")
-        if native_start.minute != 0 or native_start.second != 0:
-            raise DataValidationError("native forecast starts must align to a whole hour")
-        for offset in (timedelta(0), timedelta(minutes=30)):
-            delivery_start = native_start + offset
-            if delivery_start in expanded:
-                raise DataValidationError(
-                    "hourly forecast expansion produced an overlapping delivery interval"
-                )
-            expanded[delivery_start] = ExpandedForecast(
-                delivery_start=delivery_start,
-                native_start_time=native_start,
-                publish_time=forecast.publish_time,
-                generation_mw=forecast.generation_mw,
-                decision_cutoff_utc=forecast.decision_cutoff_utc,
-                decision_cutoff_local=forecast.decision_cutoff_local,
-            )
-    return tuple(expanded[start] for start in sorted(expanded))
-
-
 def build_interval_matches(
     expected_starts: Iterable[datetime],
     actuals: Sequence[ActualRecord],
-    forecasts: Sequence[ExpandedForecast],
+    forecasts: Sequence[SelectedForecast],
     decision_cutoff_time: time,
     timezone_name: str = LONDON_TIMEZONE,
 ) -> tuple[IntervalMatch, ...]:
@@ -220,9 +192,9 @@ def build_interval_matches(
             raise DataValidationError("actual records must be deduplicated before matching")
         actual_by_start[start] = actual
 
-    forecast_by_start: dict[datetime, ExpandedForecast] = {}
+    forecast_by_start: dict[datetime, SelectedForecast] = {}
     for forecast in forecasts:
-        start = _aware_utc(forecast.delivery_start, "forecast.delivery_start")
+        start = _aware_utc(forecast.native_start_time, "forecast.native_start_time")
         if start in forecast_by_start:
             raise DataValidationError("forecast records must be deduplicated before matching")
         forecast_by_start[start] = forecast

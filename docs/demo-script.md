@@ -6,13 +6,12 @@
 note of the four KPI values shown by that live response. Elexon can revise
 historical data, so do not reuse a metric value from a previous recording.
 
-The final local production-container verification used **15 January 2026** at
-the **12:00 Europe/London** cut-off. It returned **48 of 48 matched
-half-hourly intervals**, **100% forecast coverage**, **MAE 1,189.79 MW**,
-**RMSE 1,304.38 MW**, **WAPE 11.26%**, and **bias +1,189.79 MW**. These are
-real results from that one live query, not a claim about all dates or a fixed
-accuracy result: Elexon can revise historical rows, so read the current screen
-values before recording.
+The final local verification used **15 January 2026** at the **12:00
+Europe/London** cut-off. It returned **24 of 48 matched intervals**, **50%
+forecast coverage**, **MAE 1,173.17 MW**, **RMSE 1,304.88 MW**, **WAPE
+11.08%**, and **bias +1,173.17 MW**. The native datasets have different
+cadences, and this implementation matches identical `startTime` values only.
+Elexon can revise historical rows, so read the current screen before recording.
 
 ## Part 1 — customer presentation (0:00–5:00)
 
@@ -42,11 +41,11 @@ default 12:00 Europe/London selected initially.
 
 ### 1:25–2:20 — Read the accuracy summary
 
-**Show:** the five summary cards.
+**Show:** the six summary cards.
 
 > The cards show mean absolute error, root mean squared error, weighted
-> absolute percentage error, forecast bias, and the number of matched delivery
-> intervals with coverage. MAE describes a typical miss. RMSE puts more weight
+> absolute percentage error, forecast bias, matched delivery intervals, and
+> forecast coverage. MAE describes a typical miss. RMSE puts more weight
 > on large misses. WAPE expresses total absolute error relative to actual
 > generation. Bias is positive when the forecasts are high on average and
 > negative when they are low.
@@ -75,14 +74,14 @@ each chart.
 
 ### 3:15–4:15 — Auditability and decision support
 
-**Show:** half-hourly table and the forecast-publication column; scroll to an
-expanded hourly source badge if present.
+**Show:** half-hourly table and the forecast-publication column; compare a
+matched `:00` row with the following unmatched `:30` row.
 
 > The table supports an audit conversation. Each half-hour lists the selected
 > forecast, actual generation, signed and absolute error, and the forecast
-> publication timestamp. If no forecast is eligible at the selected cut-off,
-> the row says so rather than presenting a synthetic value. The hourly WINDFOR
-> forecast is explicitly marked where it is repeated to the matching half-hour.
+> publication timestamp. If no forecast exists at that exact `startTime`, or no
+> version was eligible at the selected cut-off, the row says so rather than
+> presenting a synthetic value.
 
 > This lets a planning team distinguish forecast quality from data availability
 > and consider whether a different decision time would have changed the
@@ -93,7 +92,7 @@ expanded hourly source badge if present.
 **Show:** decision policy and data-coverage panel.
 
 > The data-quality panel records the cut-off policy, forecast publication
-> history, cadence transformation, revisions, expected intervals, and matched
+> history, exact cadence-matching policy, revisions, expected intervals, and matched
 > intervals. The source scope is Great Britain transmission-system data as
 > described by Elexon. The tool therefore supports transparent day-ahead
 > evaluation, while making its data and methodology limitations clear.
@@ -131,11 +130,10 @@ expanded hourly source badge if present.
 > published exactly at the cut-off is eligible. Actual revisions are resolved by
 > retaining the latest actual publication for the delivery interval.
 
-> FUELHH is half-hourly and WINDFOR is hourly. Rather than silently dropping
-> every :30 actual, the selected hourly forecast is repeated across its two
-> matching half-hour intervals. That transformation is retained in response
-> metadata and flagged in the UI; it does not imply that WINDFOR is natively
-> half-hourly.
+> FUELHH is half-hourly and WINDFOR is hourly. The backend keeps every actual
+> row but matches only identical normalized `startTime` values. Each `:30`
+> actual therefore remains visible with a missing forecast instead of receiving
+> an invented or carried-forward value, and coverage reports that limitation.
 
 ### 7:35–8:25 — Metrics and tests
 
@@ -173,7 +171,7 @@ the homepage/API health response.
 **Show:** README limitations and deployment checklist.
 
 > Important choices are explicit: the decision time is configurable, missing
-> records are never fabricated, the hourly-to-half-hour conversion is visible,
+> records are never fabricated, the source-cadence mismatch is visible,
 > and live source data can be revised. The README includes Windows, Docker,
 > production, test, and Heroku instructions, as well as the remaining
 > submission checks. This keeps the tool suitable for review rather than

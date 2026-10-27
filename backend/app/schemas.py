@@ -88,11 +88,8 @@ class IntervalResult(ApiModel):
     actual_publish_time_local: datetime | None
     forecast_publish_time_utc: datetime | None
     forecast_publish_time_local: datetime | None
-    native_forecast_start_utc: datetime | None
-    native_forecast_start_local: datetime | None
     decision_cutoff_utc: datetime
     decision_cutoff_local: datetime
-    forecast_was_expanded: bool
     status: Literal["matched", "missing_actual", "missing_forecast", "missing_both"]
 
 

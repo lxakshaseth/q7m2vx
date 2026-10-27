@@ -6,14 +6,14 @@ Wind Forecast Insight is a full-stack dashboard that evaluates national wind-gen
 
 Day-ahead electricity-system decisions depend on expected wind output. A simple actual-versus-forecast chart can accidentally use a forecast published after a planner’s decision. This application instead asks: **at a defined day-before decision cut-off, which forecast was actually available, and how accurately did it match the outturn?**
 
-It makes forecast availability, missing data, publication history, cadence conversion, and metric coverage visible. This is an auditable assignment demonstration, not a real-time control, trading, or dispatch system.
+It makes forecast availability, missing data, publication history, source-cadence differences, and metric coverage visible. This is an auditable assignment demonstration, not a real-time control, trading, or dispatch system.
 
 ## Features
 
 - Select a January 2026 delivery date and a Europe/London decision cut-off.
 - Fetch Elexon actuals and forecast versions in FastAPI; the browser never calls Elexon directly.
 - Select the latest forecast eligible at the relevant day-before cut-off.
-- Reconcile hourly forecasts and half-hourly actuals explicitly.
+- Match hourly forecasts to half-hourly actuals only where `startTime` is identical.
 - Show MAE, RMSE, WAPE, bias, coverage, charts, an audit table, and data-quality notes.
 - Preserve missing values rather than filling them with estimates.
 - Run separate Vite and FastAPI services for local development.
@@ -32,7 +32,7 @@ Browser
                        Elexon BMRS FUELHH and WINDFOR public stream APIs
 ~~~
 
-React is presentation-only. FastAPI owns retrieval, validation, normalisation, forecast selection, cadence expansion, matching, metric calculation, and short-lived in-memory caching. There is no database and no sample-data fallback. See [docs/architecture.md](docs/architecture.md) for the detailed request flow.
+React is presentation-only. FastAPI owns retrieval, validation, normalisation, cutoff-aware forecast selection, exact-start matching, metric calculation, and short-lived in-memory caching. There is no database and no sample-data fallback. See [docs/architecture.md](docs/architecture.md) for the detailed request flow.
 
 | Area | Technology |
 | --- | --- |
@@ -111,7 +111,7 @@ subject to publishTime <= day-before Europe/London decision cut-off
 
 A forecast published exactly at the cut-off is eligible; later versions are not. Actual FUELHH revisions are normalised by retaining the latest actual publication for the same half-hour start. Exact duplicates are removed. Conflicting values at the same source key are rejected rather than guessed.
 
-WINDFOR is hourly and FUELHH is half-hourly. After selection, the hourly forecast is repeated to its matching :00 and :30 half-hours. The API exposes the transformation and native forecast start so it cannot be mistaken for a native half-hour forecast.
+WINDFOR is hourly and FUELHH is half-hourly. The backend joins them only when their normalized UTC `startTime` values are identical. It never copies an hourly value into the intervening `:30` row, so a complete January source response has at most 744 matched intervals out of 1,488 actual intervals and reports 50% forecast coverage.
 
 For a matched half-hour, let error = forecast MW - actual MW and n = matched intervals:
 
@@ -172,6 +172,14 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install --upgrade pip
 .\.venv\Scripts\python.exe -m pip install -r .\backend\requirements-dev.txt
 .\.venv\Scripts\python.exe -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --reload
+~~~
+
+The command above must be run from the repository root. If your PowerShell
+prompt already ends in `wind-forecast-insight\backend>`, use this equivalent
+command instead (it makes the parent repository importable):
+
+~~~powershell
+.\.venv\Scripts\python.exe -m uvicorn backend.app.main:app --app-dir .. --host 127.0.0.1 --port 8000 --reload
 ~~~
 
 In a second PowerShell window:
@@ -247,15 +255,17 @@ Final local verification results:
 
 | Check | Actual result |
 | --- | --- |
-| Backend tests in Python 3.12 container | **57 passed in 1.05s** |
+| Backend tests with the Python 3.12 environment | **57 passed in 1.16s** |
 | Frontend production build | Passed; Vite 6.4.5 built 627 modules |
-| Root production Docker image | Built successfully |
-| Production homepage | HTTP 200; returned the Vite app shell |
-| Production /api/health | HTTP 200 JSON |
-| Unknown production /api/* route | HTTP 404 JSON, not SPA HTML |
-| Production live analysis request | HTTP 200; 48 intervals, 48 matched, 100% coverage for 2026-01-15 at 12:00 |
-| Docker Compose config and image build | Passed |
-| Compose frontend, backend, and proxied health endpoint | HTTP 200 / ok |
+| Production-style homepage served by FastAPI | HTTP 200; returned the Vite app shell with the correct title |
+| `/api/health` | HTTP 200 JSON |
+| Unknown `/api/*` route | HTTP 404 JSON, not SPA HTML |
+| Live daily analysis | HTTP 200; 48 intervals, 24 matched, 50% coverage for 2026-01-15 at 12:00 |
+| Live January source audit (27 Oct 2026) | 1,488 FUELHH rows; 21,389 raw WINDFOR publication-window rows; 17,711 January-target forecast versions retained; all 744 hourly targets selected |
+| Live January metrics | 1,488 actual intervals, 744 matched, 50% exact-start coverage |
+| Browser rendering | Correct wind dashboard, six KPI cards, charts, audit rows, and source/method notes displayed |
+| Docker Compose configuration | Valid |
+| Docker image build | Not run: Docker Desktop's Linux engine was not running |
 
 The Vite build emits its standard advisory that the minified JavaScript chunk exceeds 500 kB. The build is successful; code splitting is a future performance improvement.
 
@@ -301,7 +311,7 @@ No secret is required for these public Elexon endpoints. Backend settings are en
 
 - Elexon historical rows can be revised after a recording or deployment; refresh the dashboard before presenting numerical results.
 - The source is Great Britain Elexon generation outturn, not a complete UK measurement audit.
-- WINDFOR is hourly and FUELHH is half-hourly; repeated forecast values are an explicit analytical choice.
+- WINDFOR is hourly and FUELHH is half-hourly; exact `startTime` matching intentionally leaves the intervening `:30` rows without forecasts.
 - The seven-day publication lookback is configurable but is not a complete archive of all prior forecast versions.
 - The default 12:00 Europe/London cut-off is a demo assumption.
 - Missing values lower coverage and are never imputed.

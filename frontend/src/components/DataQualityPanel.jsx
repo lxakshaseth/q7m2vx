@@ -41,6 +41,12 @@ export function DataQualityPanel({ metadata, metrics }) {
             Each row reports the publication timestamp of the version selected at or
             before the decision cut-off. It can differ across delivery hours.
           </p>
+          <div className="policy-divider" />
+          <h3>Exact interval matching</h3>
+          <p>
+            WINDFOR is hourly and FUELHH is half-hourly. Values join only when their
+            startTime is identical; no :30 forecast is invented or carried forward.
+          </p>
         </div>
 
         <dl className="quality-grid">
@@ -79,7 +85,7 @@ export function DataQualityPanel({ metadata, metrics }) {
 
       <div className="quality-notes">
         <p>
-          <strong>Forecast cadence:</strong> {metadata.analysisResolution}.
+          <strong>Forecast cadence:</strong> {metadata.analysisResolution}
         </p>
         <p>
           <strong>Publication history retrieved:</strong>{" "}
@@ -90,6 +96,39 @@ export function DataQualityPanel({ metadata, metrics }) {
           <strong>Analysis retrieved:</strong> {formatDateTime(metadata.retrievedAtUtc)} UK
           local.
         </p>
+      </div>
+
+      <div className="data-sources" aria-labelledby="data-sources-heading">
+        <div>
+          <p className="eyebrow">Official data sources</p>
+          <h3 id="data-sources-heading">Elexon BMRS generation data</h3>
+          <p>
+            The backend retrieves public source records directly, applies the selected
+            decision cut-off, and returns the analysed values shown above.
+          </p>
+        </div>
+        <ul className="data-source-list">
+          <li>
+            <a
+              href="https://bmrs.elexon.co.uk/api-documentation/endpoint/datasets/FUELHH/stream"
+              target="_blank"
+              rel="noreferrer"
+            >
+              FUELHH actual generation
+            </a>
+            <span>Half-hourly Great Britain generation, filtered to WIND.</span>
+          </li>
+          <li>
+            <a
+              href="https://bmrs.elexon.co.uk/api-documentation/endpoint/datasets/WINDFOR/stream"
+              target="_blank"
+              rel="noreferrer"
+            >
+              WINDFOR forecast history
+            </a>
+            <span>Published wind forecasts used for latest-before-cut-off selection.</span>
+          </li>
+        </ul>
       </div>
 
       {hasWarnings ? (

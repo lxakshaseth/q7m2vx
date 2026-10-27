@@ -1,7 +1,7 @@
 # Wind Forecast Intelligence frontend
 
 This Vite + React dashboard presents the existing FastAPI analysis; it does not
-call Elexon or calculate forecast selection, cadence conversion, or metrics in
+call Elexon or calculate forecast selection, cadence reconciliation, or metrics in
 the browser.
 
 ## Run locally
@@ -11,6 +11,10 @@ Start the backend from the repository root in one PowerShell window:
 ```powershell
 .\.venv\Scripts\python.exe -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
+
+This backend command is run from the repository root. If you instead start it
+while your prompt is already in `backend`, use `--app-dir ..` after the app
+path so Python can resolve the top-level package.
 
 In a second PowerShell window:
 
@@ -52,8 +56,9 @@ npm run preview
 - `12:00 Europe/London` is deliberately labelled as a configurable demo
   assumption. It is distinct from the selected forecast publication time
   shown in the chart tooltip and detail table.
-- The backend reports an hourly forecast expanded to the matching half-hours.
-  The dashboard displays that method and flags the expanded table rows.
+- WINDFOR is hourly while FUELHH is half-hourly. The backend matches identical
+  `startTime` values only, and the dashboard leaves unmatched `:30` rows visible
+  as missing forecasts rather than inventing intermediate values.
 - Null API values are kept as gaps: the charts do not interpolate them, the
   table names unavailable forecasts, and the coverage/data-quality sections
   explain their effect on metrics.

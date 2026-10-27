@@ -26,7 +26,6 @@ from backend.app.services.elexon_client import ElexonClient, FUELHH_PATH, WINDFO
 from backend.app.services.forecast_selection import (
     build_interval_matches,
     decision_cutoff_for_date,
-    expand_hourly_forecasts,
     half_hour_starts,
     hourly_starts,
     select_day_before_forecasts,
@@ -49,8 +48,8 @@ SELECTION_RULE = (
     "that is not later than that delivery date's decision cutoff."
 )
 RESOLUTION_POLICY = (
-    "Native hourly WINDFOR selected once per hour and repeated over the matching "
-    ":00 and :30 half-hour delivery intervals."
+    "Exact UTC startTime matching: native hourly WINDFOR values match only the "
+    "same-start FUELHH interval; intervening :30 half-hours remain missing."
 )
 
 
@@ -111,16 +110,8 @@ def _interval_schema(interval: IntervalMatch, zone: ZoneInfo) -> IntervalResult:
         forecast_publish_time_local=(
             forecast.publish_time.astimezone(zone) if forecast else None
         ),
-        native_forecast_start_utc=(forecast.native_start_time if forecast else None),
-        native_forecast_start_local=(
-            forecast.native_start_time.astimezone(zone) if forecast else None
-        ),
         decision_cutoff_utc=interval.decision_cutoff_utc,
         decision_cutoff_local=interval.decision_cutoff_local,
-        forecast_was_expanded=(
-            forecast is not None
-            and forecast.delivery_start != forecast.native_start_time
-        ),
         status=interval.status,
     )
 
@@ -263,11 +254,10 @@ class AnalysisService:
             decision_cutoff_time,
             self._settings.decision_timezone,
         )
-        expanded = expand_hourly_forecasts(selection.selected)
         matches = build_interval_matches(
             expected_starts,
             actuals,
-            expanded,
+            selection.selected,
             decision_cutoff_time,
             self._settings.decision_timezone,
         )
@@ -291,7 +281,9 @@ class AnalysisService:
         if metric_result.missing_forecast_interval_count:
             warnings.append(
                 f"{metric_result.missing_forecast_interval_count} available actual intervals "
-                "have no forecast eligible at the decision cutoff and are excluded from metrics."
+                "have no exact-start forecast selected and are excluded from metrics. "
+                "This includes native :30 cadence gaps and any hourly target without "
+                "a cutoff-eligible publication."
             )
         if (
             metric_result.matched_interval_count > 0

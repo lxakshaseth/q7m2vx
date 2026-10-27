@@ -61,7 +61,7 @@ def metadata() -> AnalysisMetadata:
         decision_cutoff_time="12:00",
         decision_cutoff_policy="Adjustable demo assumption",
         forecast_selection_rule="greatest eligible publication",
-        analysis_resolution="hourly forecast repeated to half-hour intervals",
+        analysis_resolution="exact startTime matching",
         delivery_start_utc=instant,
         delivery_end_utc=datetime(2026, 2, 1, tzinfo=timezone.utc),
         forecast_publication_from_utc=datetime(2025, 12, 25, tzinfo=timezone.utc),

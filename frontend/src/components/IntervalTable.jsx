@@ -3,7 +3,7 @@ import { formatDateTime, formatMw, formatSignedMw } from "../utils/format";
 const STATUS_LABELS = {
   matched: "Matched",
   missing_actual: "No actual",
-  missing_forecast: "No eligible forecast",
+  missing_forecast: "No matched forecast",
   missing_both: "No data",
 };
 
@@ -60,12 +60,7 @@ export function IntervalTable({ intervals }) {
                     {formatDateTime(interval.deliveryStartLocal)}
                   </td>
                   <td data-label="Selected forecast">
-                    <ValueOrMissing value={interval.forecastMw} missingLabel="No eligible forecast" />
-                    {interval.forecastWasExpanded && interval.forecastMw !== null ? (
-                      <span className="expansion-badge" title="Native hourly forecast repeated to this half-hour">
-                        Hourly source
-                      </span>
-                    ) : null}
+                    <ValueOrMissing value={interval.forecastMw} missingLabel="No matched forecast" />
                   </td>
                   <td data-label="Actual generation">
                     <ValueOrMissing value={interval.actualMw} missingLabel="No actual value" />

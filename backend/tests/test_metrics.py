@@ -5,7 +5,7 @@ from datetime import date, datetime, timezone
 
 import pytest
 
-from backend.app.domain import ActualRecord, ExpandedForecast, IntervalMatch
+from backend.app.domain import ActualRecord, IntervalMatch, SelectedForecast
 from backend.app.services.metrics import calculate_metrics
 
 
@@ -25,7 +25,7 @@ def interval(
         else None
     )
     forecast = (
-        ExpandedForecast(start, start.replace(minute=0), cutoff, forecast_mw, cutoff, cutoff)
+        SelectedForecast(start, cutoff, forecast_mw, cutoff, cutoff)
         if forecast_mw is not None
         else None
     )

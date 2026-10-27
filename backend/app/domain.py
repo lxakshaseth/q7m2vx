@@ -54,18 +54,6 @@ class SelectedForecast:
     decision_cutoff_local: datetime
 
 
-@dataclass(frozen=True, slots=True)
-class ExpandedForecast:
-    """A selected hourly forecast repeated onto one half-hour delivery key."""
-
-    delivery_start: datetime
-    native_start_time: datetime
-    publish_time: datetime
-    generation_mw: float
-    decision_cutoff_utc: datetime
-    decision_cutoff_local: datetime
-
-
 IntervalStatus = Literal[
     "matched", "missing_actual", "missing_forecast", "missing_both"
 ]
@@ -78,7 +66,7 @@ class IntervalMatch:
     decision_cutoff_utc: datetime
     decision_cutoff_local: datetime
     actual: ActualRecord | None
-    forecast: ExpandedForecast | None
+    forecast: SelectedForecast | None
 
     @property
     def status(self) -> IntervalStatus:

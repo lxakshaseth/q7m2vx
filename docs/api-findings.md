@@ -278,7 +278,7 @@ The client retries only transport failures, 429, and 5xx statuses with bounded b
 - **Confirmed schema:** FUELHH returns `dataset`, `publishTime`, `startTime`, `settlementDate`, `settlementPeriod`, `fuelType`, and `generation`; WINDFOR returns `dataset`, `publishTime`, `startTime`, and `generation`. Official nullability and observed JSON types are tabulated above.
 - **Confirmed parameters:** FUELHH has six documented stream parameters; WINDFOR has only its two publication-time parameters. No undocumented parameter was sent.
 - **Geography:** Elexon describes FUELHH as Great Britain generation outturn, not complete United Kingdom generation. Future UI wording must retain that scope.
-- **Cadence:** FUELHH is half-hourly; the observed WINDFOR delivery series is hourly. A later analysis phase must explicitly aggregate actuals or repeat hourly forecasts. This script does neither.
+- **Cadence:** FUELHH is half-hourly and the observed WINDFOR delivery series is hourly. The application follows the assignment's exact-`startTime` rule, retaining intervening `:30` FUELHH rows as missing forecasts rather than aggregating or repeating values. This inspection script itself performs no matching.
 - **Forecast choice remains a product decision:** multiple WINDFOR publications exist for each target. Latest-before-delivery, day-ahead, earliest, and fixed-lead policies produce different scores.
 - **History window:** starting on 31 December supplies a latest eligible version for every observed January target, including January 1, but is not a complete archive of versions published before that date.
 - **Revisions:** this settlement-date FUELHH result has one WIND row per interval. It does not prove that the endpoint exposes every historical actual revision.

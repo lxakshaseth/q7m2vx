@@ -4,17 +4,17 @@
 
 Build a React dashboard backed by FastAPI that evaluates wind-generation forecasts against actual national outturn for the 31-day period **2026-01-01 through 2026-01-31**. The dashboard should make both accuracy and the selection of the compared forecast transparent.
 
-There is a source-resolution conflict that must be resolved openly: FUELHH is half-hourly and WINDFOR is hourly. The raw sources cannot be joined one-to-one on every half-hourly `startTime`. The implementation must choose and label a conversion rule rather than silently omitting `:30` actual rows.
+There is a source-resolution mismatch that must be reported openly: FUELHH is half-hourly and WINDFOR is hourly. The assignment requires matching the same `startTime`, so only the hourly-aligned FUELHH rows can match. The intervening `:30` actual rows stay in the response as explicit missing forecasts.
 
 ## In-scope behaviour
 
 1. Retrieve actual records from Elexon's `FUELHH/stream` dataset.
 2. Retain only `fuelType = WIND` records.
 3. Retrieve historical forecast records from `WINDFOR/stream`.
-4. Use `startTime` as the native delivery-interval key in both datasets, then derive a common analysis interval using the selected resolution policy.
+4. Normalize `startTime` to UTC and use exact timestamp equality as the delivery-interval join key.
 5. Use `generation` as the MW value in both datasets.
 6. Use `publishTime` to decide which forecast was available for a delivery interval.
-7. Match one selected forecast with one actual value for the same **normalised analysis interval**; preserve the native source timing and resampling policy in metadata.
+7. Match one selected forecast with one actual value only when their normalized `startTime` values are identical; preserve all unmatched half-hours.
 8. Return summary metrics, time-series rows, coverage information, and the selected forecast's `publishTime`.
 
 The primary sources are the [FUELHH stream](https://bmrs.elexon.co.uk/api-documentation/endpoint/datasets/FUELHH/stream), [WINDFOR stream](https://bmrs.elexon.co.uk/api-documentation/endpoint/datasets/WINDFOR/stream), and the [official OpenAPI specification](https://data.elexon.co.uk/swagger/v1/swagger.json).
@@ -55,24 +55,21 @@ January is GMT, so UTC and UK civil time align for this requested month. There a
 
 For actuals, select the latest `publishTime` if repeated FUELHH rows exist for the same `(startTime, fuelType)`; retain the choice and duplicate count in data-quality metadata. This treats the latest published outturn as the best available actual, rather than pretending historical revisions did not occur.
 
-## Implemented cadence-resolution decision
+## Implemented cadence-matching decision
 
-Elexon's [wind-generation page](https://bmrs.elexon.co.uk/wind-generation) describes WINDFOR as an hourly forecast. The assignment wording asks for matching half-hourly delivery intervals, which is not available natively in both sources. The backend therefore uses the explicit expansion policy below.
+Elexon's [wind-generation page](https://bmrs.elexon.co.uk/wind-generation) describes WINDFOR as an hourly forecast. The assignment explicitly says to match the same `startTime`, so the backend does not manufacture a half-hourly forecast series.
 
-| Option | Transformation | Scored rows in January | Trade-off |
-| --- | --- | ---: | --- |
-| Alternative retained for reference: hourly-aligned | For each forecast hour, average its two FUELHH half-hourly MW values and join to the hourly forecast by the hour start. | 744 | Not implemented. |
-| **Implemented: half-hourly expansion** | Select one hourly forecast version, treat it as applying to `[startTime, startTime + 1 hour)`, and repeat it for the `:00` and `:30` actual intervals. | 1,488 | Preserves every actual interval but does not create genuinely half-hourly forecasts. Responses label it `hourly WINDFOR repeated to half-hour intervals`. |
+| Implemented rule | Scored rows in a complete January | Coverage implication |
+| --- | ---: | --- |
+| Select the latest cutoff-eligible WINDFOR version per native hour, then join to FUELHH on identical normalized UTC `startTime`. | 744 | The 744 intervening `:30` FUELHH rows remain `missing_forecast`, yielding 50% coverage when all source rows are present. |
 
-The backend does **not** join only FUELHH records whose minute is `00`; doing so
-would silently discard half the actual data. It selects a forecast once for the
-native hour, then expands that selected version to both half-hours while
-preserving `nativeForecastStart` and `publishTime` in the API response.
+The backend keeps the full 1,488-row half-hourly delivery grid. It does not drop
+the `:30` actual rows; those rows remain visible with a null forecast and are
+excluded from accuracy metrics while reducing forecast coverage.
 
-Forecast eligibility is evaluated once for the native hourly target against the
-day-before cutoff. The selected value and publication timestamp are then copied
-to the two matching half-hour keys; selection is not repeated independently for
-`:30`.
+Forecast eligibility is evaluated for each native hourly target against the
+day-before cutoff. No WINDFOR record exists at the intervening `:30` key, so no
+forecast is selected or copied there.
 
 ## Metrics
 
@@ -89,7 +86,7 @@ Do not use MAPE as the headline metric: wind generation can be zero or close to 
 
 ## Data-quality rules
 
-- Do not fabricate or forward-fill an actual or forecast value. The only permitted value repetition is the named, reviewer-approved hourly-to-half-hour expansion above.
+- Do not fabricate, repeat, interpolate, or forward-fill an actual or forecast value.
 - Exclude unmatched intervals from metric denominators and report matched, missing-actual, missing-forecast, and duplicate/revision counts.
 - Validate that `generation` is numeric and that selected rows fall inside the requested delivery range.
 - Record the target delivery range, the publication retrieval range, the selection policy, `analysisResolution`, and data retrieval time in the response metadata.
@@ -121,7 +118,7 @@ below are now explicit implementation decisions.
 ## Acceptance checks
 
 - Exactly the requested delivery window is analysed.
-- Every scored row has an explicitly defined common analysis interval; the response identifies whether it is hourly-aligned or an hourly forecast expanded to half-hours.
+- Every scored row has an actual and forecast with exactly equal normalized `startTime`; unmatched half-hours remain visible.
 - Every selected forecast satisfies the stated publish-time policy.
 - The API reports coverage and selection metadata alongside metrics.
 - The UI labels MW, metric units, date range, and forecast convention.
