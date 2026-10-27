@@ -107,19 +107,19 @@ def create_app(
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
     )
 
+    owned_client: ElexonClient | None = None
+    if analysis_service is not None:
+        service_instance = analysis_service
+    else:
+        source_client = client
+        if source_client is None:
+            source_client = ElexonClient(resolved_settings)
+            owned_client = source_client
+        service_instance = AnalysisService(source_client, resolved_settings)
+
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
-        owned_client: ElexonClient | None = None
-        if analysis_service is not None:
-            application.state.analysis_service = analysis_service
-        else:
-            source_client = client
-            if source_client is None:
-                source_client = ElexonClient(resolved_settings)
-                owned_client = source_client
-            application.state.analysis_service = AnalysisService(
-                source_client, resolved_settings
-            )
+        application.state.analysis_service = service_instance
         try:
             yield
         finally:
@@ -136,11 +136,7 @@ def create_app(
         ),
         lifespan=lifespan,
     )
-    # Supplying a service is useful for embedded ASGI callers and tests that
-    # intentionally do not run a server lifespan. Uvicorn still initializes
-    # the production service during lifespan startup when none is supplied.
-    if analysis_service is not None:
-        application.state.analysis_service = analysis_service
+    application.state.analysis_service = service_instance
     application.include_router(router)
     _configure_frontend_serving(application)
 

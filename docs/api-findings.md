@@ -1,6 +1,6 @@
 # Elexon API investigation
 
-> Generated from live Elexon responses at `2026-10-26T14:52:44.095274Z` by `scripts/inspect_elexon_api.py`.
+> Generated from live Elexon responses at `2026-10-27T16:07:14.369172Z` by `scripts/inspect_elexon_api.py`.
 
 No credentials were configured or sent. No fixture, cached response, or sample-data fallback was used. Historical rows may change if Elexon republishes data.
 
@@ -35,7 +35,7 @@ Both stream endpoints document 200, 400, 429, and 500 responses. This run observ
 
 | Probe | HTTP | Response format | Records | Bytes | Attempts |
 | --- | ---: | --- | ---: | ---: | ---: |
-| Official OpenAPI | 200 | application/json;charset=utf-8; JSON object | n/a | 1,480,105 | 1 |
+| Official OpenAPI | 200 | application/json;charset=utf-8; JSON object | n/a | 1,485,139 | 1 |
 | FUELHH January settlement dates, WIND | 200 | application/json; charset=utf-8; JSON array | 1,488 | 269,971 | 1 |
 | FUELHH January 1 publication window, WIND | 200 | application/json; charset=utf-8; JSON array | 49 | 8,910 | 1 |
 | FUELHH exact publication-boundary probe, WIND | 200 | application/json; charset=utf-8; JSON array | 1 | 182 | 1 |
@@ -278,7 +278,7 @@ The client retries only transport failures, 429, and 5xx statuses with bounded b
 - **Confirmed schema:** FUELHH returns `dataset`, `publishTime`, `startTime`, `settlementDate`, `settlementPeriod`, `fuelType`, and `generation`; WINDFOR returns `dataset`, `publishTime`, `startTime`, and `generation`. Official nullability and observed JSON types are tabulated above.
 - **Confirmed parameters:** FUELHH has six documented stream parameters; WINDFOR has only its two publication-time parameters. No undocumented parameter was sent.
 - **Geography:** Elexon describes FUELHH as Great Britain generation outturn, not complete United Kingdom generation. Future UI wording must retain that scope.
-- **Cadence:** FUELHH is half-hourly and the observed WINDFOR delivery series is hourly. The application follows the assignment's exact-`startTime` rule, retaining intervening `:30` FUELHH rows as missing forecasts rather than aggregating or repeating values. This inspection script itself performs no matching.
+- **Cadence:** FUELHH is half-hourly; the observed WINDFOR delivery series is hourly. A later analysis phase must explicitly aggregate actuals or repeat hourly forecasts. This script does neither.
 - **Forecast choice remains a product decision:** multiple WINDFOR publications exist for each target. Latest-before-delivery, day-ahead, earliest, and fixed-lead policies produce different scores.
 - **History window:** starting on 31 December supplies a latest eligible version for every observed January target, including January 1, but is not a complete archive of versions published before that date.
 - **Revisions:** this settlement-date FUELHH result has one WIND row per interval. It does not prove that the endpoint exposes every historical actual revision.
