@@ -8,6 +8,20 @@
       content="Wind forecast accuracy analysis for Great Britain national generation."
     />
     <title>Wind Forecast Intelligence</title>
+    <script>
+      // Unregister any stale service workers from other projects on localhost:5173
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(registrations) {
+          for (let registration of registrations) {
+            registration.unregister();
+          }
+        });
+      }
+      // Redirect stale subpaths like /admin back to root
+      if (window.location.pathname !== '/' && !window.location.pathname.startsWith('/api')) {
+        window.history.replaceState(null, '', '/');
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>
