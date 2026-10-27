@@ -6,6 +6,7 @@ import pytest
 
 from backend.app.domain import ActualRecord, DecisionCutoffError, ForecastRecord
 from backend.app.services.forecast_selection import (
+    build_hourly_aggregated_matches,
     build_interval_matches,
     decision_cutoff_for_date,
     select_day_before_forecasts,
@@ -150,3 +151,77 @@ def test_matching_uses_delivery_start_not_publication_time() -> None:
     assert matches[0].forecast.generation_mw == 110
     assert matches[0].forecast.native_start_time == actual_start
     assert matches[0].forecast.publish_time != actual_start
+
+
+def test_hourly_aggregated_matches_averages_complete_pairs_and_handles_incomplete() -> None:
+    h1_start = utc("2026-01-15T12:00:00Z")
+    h2_start = utc("2026-01-15T13:00:00Z")
+
+    # Complete pair for H1 (12:00 and 12:30)
+    act_1200 = ActualRecord(
+        start_time=h1_start,
+        publish_time=utc("2026-01-15T12:30:00Z"),
+        generation_mw=100.0,
+        settlement_date=date(2026, 1, 15),
+        settlement_period=25,
+    )
+    act_1230 = ActualRecord(
+        start_time=utc("2026-01-15T12:30:00Z"),
+        publish_time=utc("2026-01-15T13:00:00Z"),
+        generation_mw=200.0,
+        settlement_date=date(2026, 1, 15),
+        settlement_period=26,
+    )
+    # Incomplete pair for H2 (only 13:00 is present, 13:30 missing)
+    act_1300 = ActualRecord(
+        start_time=h2_start,
+        publish_time=utc("2026-01-15T13:30:00Z"),
+        generation_mw=300.0,
+        settlement_date=date(2026, 1, 15),
+        settlement_period=27,
+    )
+
+    fc_h1 = ForecastRecord(
+        start_time=h1_start,
+        publish_time=utc("2026-01-14T11:00:00Z"),
+        generation_mw=160.0,
+    )
+    fc_h2 = ForecastRecord(
+        start_time=h2_start,
+        publish_time=utc("2026-01-14T11:00:00Z"),
+        generation_mw=320.0,
+    )
+
+    selection = select_day_before_forecasts(
+        [fc_h1, fc_h2],
+        [h1_start, h2_start],
+        time(12, 0),
+    ).selected
+
+    matches, complete, incomplete = build_hourly_aggregated_matches(
+        [h1_start, h2_start],
+        [act_1200, act_1230, act_1300],
+        selection,
+        time(12, 0),
+    )
+
+    assert complete == 1
+    assert incomplete == 1
+    assert len(matches) == 2
+
+    # First hour: complete pair averaged ((100 + 200) / 2 = 150)
+    first = matches[0]
+    assert first.status == "matched"
+    assert first.actual is not None
+    assert first.actual.generation_mw == 150.0
+    assert first.actual.publish_time == utc("2026-01-15T13:00:00Z")
+    assert first.forecast is not None
+    assert first.forecast.generation_mw == 160.0
+    assert first.error_mw == 10.0
+
+    # Second hour: incomplete pair is missing actual, not fabricated
+    second = matches[1]
+    assert second.status == "missing_actual"
+    assert second.actual is None
+    assert second.forecast is not None
+    assert second.error_mw is None

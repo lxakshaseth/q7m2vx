@@ -120,14 +120,15 @@ function CoverageNotice({ metrics, metadata }) {
   }
 
   if (hasPartialCoverage) {
+    const isHourly = metadata.alignmentMethod === "hourly_aggregated";
     return (
       <StatusPanel tone="warning" title="Partial coverage — interpret the metrics with care">
         <p>
-          {metrics.matchedIntervalCount} of {metrics.expectedIntervalCount} expected
-          half-hourly intervals are matched. The coverage figure is based on available
-          actual intervals. WINDFOR is hourly, so exact start-time matching intentionally
-          leaves intervening :30 rows without a forecast; all gaps remain visible and are
-          excluded from metrics.
+          {metrics.matchedIntervalCount} of {metrics.expectedIntervalCount} expected{" "}
+          {isHourly ? "hourly" : "half-hourly"} delivery intervals are matched.{" "}
+          {isHourly
+            ? "Consecutive half-hours are averaged ((:00 + :30)/2); any delivery hour with an incomplete actual pair is marked missing and excluded from metrics."
+            : "WINDFOR is hourly, so exact start-time matching intentionally leaves intervening :30 rows without a forecast; all gaps remain visible and are excluded from metrics."}
         </p>
       </StatusPanel>
     );
@@ -151,6 +152,7 @@ function EmptyDataNotice({ deliveryDate }) {
 export default function App() {
   const [deliveryDate, setDeliveryDate] = useState(DEFAULT_DELIVERY_DATE);
   const [decisionCutoffTime, setDecisionCutoffTime] = useState(DEFAULT_DECISION_CUTOFF);
+  const [alignmentMethod, setAlignmentMethod] = useState("hourly_aggregated");
   const [refreshIndex, setRefreshIndex] = useState(0);
   const [viewState, setViewState] = useState({
     status: "loading",
@@ -165,6 +167,7 @@ export default function App() {
     getDailyAnalysis({
       deliveryDate,
       decisionCutoffTime,
+      alignmentMethod,
       signal: controller.signal,
     })
       .then((data) => {
@@ -179,7 +182,7 @@ export default function App() {
       });
 
     return () => controller.abort();
-  }, [deliveryDate, decisionCutoffTime, refreshIndex]);
+  }, [deliveryDate, decisionCutoffTime, alignmentMethod, refreshIndex]);
 
   const refreshAnalysis = () => setRefreshIndex((index) => index + 1);
   const isLoading = viewState.status === "loading";
@@ -208,9 +211,11 @@ export default function App() {
         <AnalysisFilters
           deliveryDate={deliveryDate}
           decisionCutoffTime={decisionCutoffTime}
+          alignmentMethod={alignmentMethod}
           isLoading={isLoading}
           onDeliveryDateChange={setDeliveryDate}
           onDecisionCutoffChange={setDecisionCutoffTime}
+          onAlignmentMethodChange={setAlignmentMethod}
           onRefresh={refreshAnalysis}
         />
 

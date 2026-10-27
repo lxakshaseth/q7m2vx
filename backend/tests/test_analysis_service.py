@@ -88,7 +88,7 @@ async def test_service_selects_cutoff_version_and_matches_exact_start_only() -> 
     )
     service = AnalysisService(client, make_settings())  # type: ignore[arg-type]
 
-    response = await service.dashboard(date(2026, 1, 1), time(12, 0))
+    response = await service.dashboard(date(2026, 1, 1), time(12, 0), alignment_method="half_hourly")
 
     assert client.fuel_calls == [(date(2026, 1, 1), date(2026, 1, 31))]
     assert client.wind_calls == [
@@ -135,7 +135,7 @@ async def test_missing_forecast_reduces_coverage_without_fabrication() -> None:
     )
     response = await AnalysisService(  # type: ignore[arg-type]
         client, make_settings()
-    ).metrics(date(2026, 1, 1), time(12))
+    ).metrics(date(2026, 1, 1), time(12), alignment_method="half_hourly")
 
     assert response.metrics.mae_mw is None
     assert response.metrics.rmse_mw is None
@@ -145,7 +145,7 @@ async def test_missing_forecast_reduces_coverage_without_fabrication() -> None:
     assert response.metrics.missing_forecast_interval_count == 1
     assert response.metrics.forecast_coverage_percent == 0
     assert any(
-        "no exact-start forecast selected" in warning
+        "no forecast selected" in warning or "no exact-start forecast" in warning
         for warning in response.metadata.warnings
     )
 
@@ -154,7 +154,7 @@ async def test_missing_forecast_reduces_coverage_without_fabrication() -> None:
 async def test_empty_month_returns_null_metrics_and_explicit_missing_grid() -> None:
     response = await AnalysisService(  # type: ignore[arg-type]
         FakeClient([], []), make_settings()
-    ).dashboard(date(2026, 1, 1), time(12))
+    ).dashboard(date(2026, 1, 1), time(12), alignment_method="half_hourly")
 
     assert len(response.intervals) == 1_488
     assert {row.status for row in response.intervals} == {"missing_both"}
@@ -171,8 +171,8 @@ async def test_day_endpoint_uses_cached_month_and_returns_local_date_only() -> N
     client = FakeClient([], [])
     service = AnalysisService(client, make_settings())  # type: ignore[arg-type]
 
-    first = await service.intervals(date(2026, 1, 15), time(12))
-    second = await service.metrics(date(2026, 1, 1), time(12))
+    first = await service.intervals(date(2026, 1, 15), time(12), alignment_method="half_hourly")
+    second = await service.metrics(date(2026, 1, 1), time(12), alignment_method="half_hourly")
 
     assert len(first.intervals) == 48
     assert all(
@@ -223,7 +223,7 @@ async def test_january_boundaries_include_last_half_hour_and_exclude_february() 
 
     response = await AnalysisService(  # type: ignore[arg-type]
         client, make_settings()
-    ).dashboard(date(2026, 1, 1), time(12))
+    ).dashboard(date(2026, 1, 1), time(12), alignment_method="half_hourly")
 
     starts = [row.delivery_start_utc for row in response.intervals]
     assert len(starts) == 1_488
@@ -239,3 +239,45 @@ async def test_january_boundaries_include_last_half_hour_and_exclude_february() 
     assert response.metadata.delivery_end_utc == datetime(
         2026, 2, 1, tzinfo=timezone.utc
     )
+
+
+@pytest.mark.asyncio
+async def test_service_hourly_aggregated_alignment_averages_actuals_and_handles_incomplete_pairs() -> None:
+    client = FakeClient(
+        actuals=[
+            fuel_row("2026-01-01T00:00:00Z", "2026-01-01T00:30:00Z", 100, 1),
+            fuel_row("2026-01-01T00:30:00Z", "2026-01-01T01:00:00Z", 200, 2),
+            fuel_row("2026-01-01T01:00:00Z", "2026-01-01T01:30:00Z", 300, 3),
+        ],
+        forecasts=[
+            wind_row("2026-01-01T00:00:00Z", "2025-12-31T12:00:00Z", 160),
+            wind_row("2026-01-01T01:00:00Z", "2025-12-31T12:00:00Z", 350),
+        ],
+    )
+    service = AnalysisService(client, make_settings())  # type: ignore[arg-type]
+    response = await service.dashboard(date(2026, 1, 1), time(12, 0), alignment_method="hourly_aggregated")
+
+    assert len(response.intervals) == 744
+    first, second = response.intervals[:2]
+
+    assert first.status == "matched"
+    assert first.actual_mw == 150.0
+    assert first.forecast_mw == 160.0
+    assert first.error_mw == 10.0
+    assert first.absolute_error_mw == 10.0
+
+    assert second.status == "missing_actual"
+    assert second.actual_mw is None
+    assert second.forecast_mw == 350.0
+    assert second.error_mw is None
+
+    assert response.metadata.alignment_method == "hourly_aggregated"
+    assert "Hourly aggregated alignment" in response.metadata.analysis_resolution
+    assert response.metadata.data_quality.complete_actual_pairs_count == 1
+    assert response.metadata.data_quality.incomplete_actual_pairs_count == 1
+    assert any("incomplete half-hourly actual pairs" in w for w in response.metadata.warnings)
+
+    assert response.metrics.matched_interval_count == 1
+    assert response.metrics.mae_mw == 10.0
+    assert response.metrics.bias_mw == 10.0
+    assert response.metrics.wape_percent == pytest.approx(10.0 / 150.0 * 100)

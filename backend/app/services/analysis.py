@@ -24,6 +24,7 @@ from backend.app.schemas import (
 from backend.app.services.cache import AsyncTTLCache
 from backend.app.services.elexon_client import ElexonClient, FUELHH_PATH, WINDFOR_PATH
 from backend.app.services.forecast_selection import (
+    build_hourly_aggregated_matches,
     build_interval_matches,
     decision_cutoff_for_date,
     half_hour_starts,
@@ -47,10 +48,17 @@ SELECTION_RULE = (
     "For each native WINDFOR delivery hour, select the greatest publishTime "
     "that is not later than that delivery date's decision cutoff."
 )
-RESOLUTION_POLICY = (
+HOURLY_RESOLUTION_POLICY = (
+    "Hourly aggregated alignment: two consecutive half-hourly FUELHH outturn observations "
+    "(H:00 and H:30) are averaged ((Actual_00 + Actual_30)/2.0) to match the 1-hour "
+    "WINDFOR delivery window. Incomplete pairs are marked as missing actuals and excluded "
+    "from error metrics."
+)
+HALF_HOURLY_RESOLUTION_POLICY = (
     "Exact UTC startTime matching: native hourly WINDFOR values match only the "
     "same-start FUELHH interval; intervening :30 half-hours remain missing."
 )
+RESOLUTION_POLICY = HOURLY_RESOLUTION_POLICY
 
 
 @dataclass(frozen=True, slots=True)
@@ -126,15 +134,18 @@ class AnalysisService:
     ) -> None:
         self._client = client
         self._settings = settings
-        self._cache: AsyncTTLCache[tuple[str, str], AnalysisBundle] = AsyncTTLCache(
+        self._cache: AsyncTTLCache[tuple[str, str, str], AnalysisBundle] = AsyncTTLCache(
             max_entries=settings.analysis_cache_max_entries,
             ttl_seconds=settings.analysis_cache_ttl_seconds,
         )
 
     async def dashboard(
-        self, month_start: date, decision_cutoff_time: time
+        self,
+        month_start: date,
+        decision_cutoff_time: time,
+        alignment_method: str = "hourly_aggregated",
     ) -> DashboardResponse:
-        bundle = await self._month(month_start, decision_cutoff_time)
+        bundle = await self._month(month_start, decision_cutoff_time, alignment_method)
         return DashboardResponse(
             month=month_start.strftime("%Y-%m"),
             metadata=bundle.metadata,
@@ -144,9 +155,12 @@ class AnalysisService:
         )
 
     async def metrics(
-        self, month_start: date, decision_cutoff_time: time
+        self,
+        month_start: date,
+        decision_cutoff_time: time,
+        alignment_method: str = "hourly_aggregated",
     ) -> MetricsResponse:
-        bundle = await self._month(month_start, decision_cutoff_time)
+        bundle = await self._month(month_start, decision_cutoff_time, alignment_method)
         return MetricsResponse(
             month=month_start.strftime("%Y-%m"),
             metadata=bundle.metadata,
@@ -154,10 +168,13 @@ class AnalysisService:
         )
 
     async def intervals(
-        self, delivery_date: date, decision_cutoff_time: time
+        self,
+        delivery_date: date,
+        decision_cutoff_time: time,
+        alignment_method: str = "hourly_aggregated",
     ) -> IntervalsResponse:
         month_start = delivery_date.replace(day=1)
-        bundle = await self._month(month_start, decision_cutoff_time)
+        bundle = await self._month(month_start, decision_cutoff_time, alignment_method)
         rows = [
             row
             for row in bundle.intervals
@@ -178,7 +195,10 @@ class AnalysisService:
         )
 
     async def _month(
-        self, month_start: date, decision_cutoff_time: time
+        self,
+        month_start: date,
+        decision_cutoff_time: time,
+        alignment_method: str = "hourly_aggregated",
     ) -> AnalysisBundle:
         if month_start.day != 1:
             raise AnalysisConfigurationError("month_start must be the first day of a month")
@@ -187,18 +207,22 @@ class AnalysisService:
         cache_key = (
             month_start.strftime("%Y-%m"),
             decision_cutoff_time.strftime("%H:%M"),
+            alignment_method,
         )
         cached = await self._cache.get(cache_key)
         if cached is not None:
-            LOGGER.debug("Analysis cache hit", extra={"month": cache_key[0]})
+            LOGGER.debug("Analysis cache hit", extra={"month": cache_key[0], "alignment": alignment_method})
             return cached
 
-        bundle, _ = await self._build(month_start, decision_cutoff_time)
+        bundle, _ = await self._build(month_start, decision_cutoff_time, alignment_method)
         await self._cache.set(cache_key, bundle)
         return bundle
 
     async def _build(
-        self, month_start: date, decision_cutoff_time: time
+        self,
+        month_start: date,
+        decision_cutoff_time: time,
+        alignment_method: str = "hourly_aggregated",
     ) -> tuple[AnalysisBundle, tuple[IntervalMatch, ...]]:
         month_end = _next_month(month_start)
         try:
@@ -237,7 +261,6 @@ class AnalysisService:
         actual_result = normalize_actual_rows(actual_rows)
         forecast_result = normalize_forecast_rows(forecast_rows)
 
-        expected_starts = half_hour_starts(delivery_start_utc, delivery_end_utc)
         native_targets = hourly_starts(delivery_start_utc, delivery_end_utc)
         target_set = set(native_targets)
         actuals = tuple(
@@ -254,24 +277,49 @@ class AnalysisService:
             decision_cutoff_time,
             self._settings.decision_timezone,
         )
-        matches = build_interval_matches(
-            expected_starts,
-            actuals,
-            selection.selected,
-            decision_cutoff_time,
-            self._settings.decision_timezone,
-        )
+
+        if alignment_method == "hourly_aggregated":
+            matches, complete_pairs, incomplete_pairs = build_hourly_aggregated_matches(
+                native_targets,
+                actuals,
+                selection.selected,
+                decision_cutoff_time,
+                self._settings.decision_timezone,
+            )
+            resolution_policy = HOURLY_RESOLUTION_POLICY
+        elif alignment_method == "half_hourly":
+            expected_starts = half_hour_starts(delivery_start_utc, delivery_end_utc)
+            matches = build_interval_matches(
+                expected_starts,
+                actuals,
+                selection.selected,
+                decision_cutoff_time,
+                self._settings.decision_timezone,
+            )
+            complete_pairs = len(actuals) // 2
+            incomplete_pairs = 0
+            resolution_policy = HALF_HOURLY_RESOLUTION_POLICY
+        else:
+            raise AnalysisConfigurationError(
+                f"Unsupported alignment_method '{alignment_method}'. Must be 'hourly_aggregated' or 'half_hourly'."
+            )
+
         metric_result = calculate_metrics(matches)
 
         warnings = [
             DECISION_POLICY,
-            RESOLUTION_POLICY,
+            resolution_policy,
             (
                 "Forecast history is bounded to "
                 f"{self._settings.forecast_lookback_days} days before the month; "
                 "targets without an eligible publication remain missing."
             ),
         ]
+        if alignment_method == "hourly_aggregated" and incomplete_pairs > 0:
+            warnings.append(
+                f"{incomplete_pairs} delivery hours had incomplete half-hourly actual pairs "
+                "and were excluded from error metrics."
+            )
         if metric_result.actual_interval_count == 0:
             warnings.append("No actual WIND intervals were available for this month.")
         elif metric_result.missing_actual_interval_count:
@@ -281,9 +329,7 @@ class AnalysisService:
         if metric_result.missing_forecast_interval_count:
             warnings.append(
                 f"{metric_result.missing_forecast_interval_count} available actual intervals "
-                "have no exact-start forecast selected and are excluded from metrics. "
-                "This includes native :30 cadence gaps and any hourly target without "
-                "a cutoff-eligible publication."
+                "have no forecast selected and are excluded from metrics."
             )
         if (
             metric_result.matched_interval_count > 0
@@ -303,13 +349,16 @@ class AnalysisService:
             observed_native_forecast_target_count=observed_native_targets,
             expected_native_forecast_target_count=len(native_targets),
             selected_native_forecast_count=selection.selected_target_count,
+            complete_actual_pairs_count=complete_pairs,
+            incomplete_actual_pairs_count=incomplete_pairs,
         )
         retrieved_at = datetime.now(timezone.utc)
         metadata = AnalysisMetadata(
             decision_cutoff_time=decision_cutoff_time.strftime("%H:%M"),
             decision_cutoff_policy=DECISION_POLICY,
             forecast_selection_rule=SELECTION_RULE,
-            analysis_resolution=RESOLUTION_POLICY,
+            alignment_method=alignment_method,
+            analysis_resolution=resolution_policy,
             delivery_start_utc=delivery_start_utc,
             delivery_end_utc=delivery_end_utc,
             forecast_publication_from_utc=publication_from_utc,

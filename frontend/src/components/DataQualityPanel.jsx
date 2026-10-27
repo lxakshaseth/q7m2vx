@@ -42,10 +42,11 @@ export function DataQualityPanel({ metadata, metrics }) {
             before the decision cut-off. It can differ across delivery hours.
           </p>
           <div className="policy-divider" />
-          <h3>Exact interval matching</h3>
+          <h3>Cadence alignment</h3>
           <p>
-            WINDFOR is hourly and FUELHH is half-hourly. Values join only when their
-            startTime is identical; no :30 forecast is invented or carried forward.
+            {metadata.alignmentMethod === "hourly_aggregated"
+              ? "Hourly aggregated: consecutive half-hourly actuals (H:00 and H:30) are averaged ((Actual_00 + Actual_30)/2) to match 1-hour forecasts without duplicating forecasts. Incomplete pairs are marked missing and excluded from metrics."
+              : "Exact interval matching: values match only on identical startTime; intervening :30 half-hours remain missing without fabricating data."}
           </p>
         </div>
 
@@ -53,7 +54,7 @@ export function DataQualityPanel({ metadata, metrics }) {
           <QualityMeasure
             label="Expected delivery intervals"
             value={metrics.expectedIntervalCount}
-            detail="Half-hourly grid"
+            detail={metadata.alignmentMethod === "hourly_aggregated" ? "Hourly delivery grid" : "Half-hourly grid"}
           />
           <QualityMeasure
             label="Actual intervals available"
@@ -70,16 +71,33 @@ export function DataQualityPanel({ metadata, metrics }) {
             value={metrics.matchedIntervalCount}
             detail="Used in metrics"
           />
-          <QualityMeasure
-            label="Actual revisions resolved"
-            value={quality.actualRevisionsResolved}
-            detail="Latest publication retained"
-          />
-          <QualityMeasure
-            label="Forecast versions selected"
-            value={quality.selectedNativeForecastCount}
-            detail="Native hourly targets"
-          />
+          {metadata.alignmentMethod === "hourly_aggregated" ? (
+            <>
+              <QualityMeasure
+                label="Complete actual pairs"
+                value={quality.completeActualPairsCount}
+                detail="Both :00 and :30 present"
+              />
+              <QualityMeasure
+                label="Incomplete actual pairs"
+                value={quality.incompleteActualPairsCount}
+                detail="Missing half-hour excluded"
+              />
+            </>
+          ) : (
+            <>
+              <QualityMeasure
+                label="Actual revisions resolved"
+                value={quality.actualRevisionsResolved}
+                detail="Latest publication retained"
+              />
+              <QualityMeasure
+                label="Forecast versions selected"
+                value={quality.selectedNativeForecastCount}
+                detail="Native hourly targets"
+              />
+            </>
+          )}
         </dl>
       </div>
 

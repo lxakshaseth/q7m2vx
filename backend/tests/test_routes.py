@@ -86,10 +86,15 @@ def metadata() -> AnalysisMetadata:
 
 class FakeService:
     def __init__(self) -> None:
-        self.calls: list[tuple[str, Any, time]] = []
+        self.calls: list[tuple[str, Any, time, str]] = []
 
-    async def dashboard(self, month_start: date, cutoff: time) -> DashboardResponse:
-        self.calls.append(("dashboard", month_start, cutoff))
+    async def dashboard(
+        self,
+        month_start: date,
+        cutoff: time,
+        alignment_method: str = "hourly_aggregated",
+    ) -> DashboardResponse:
+        self.calls.append(("dashboard", month_start, cutoff, alignment_method))
         return DashboardResponse(
             month=month_start.strftime("%Y-%m"),
             metadata=metadata(),
@@ -98,8 +103,13 @@ class FakeService:
             intervals=[],
         )
 
-    async def intervals(self, delivery_date: date, cutoff: time) -> IntervalsResponse:
-        self.calls.append(("intervals", delivery_date, cutoff))
+    async def intervals(
+        self,
+        delivery_date: date,
+        cutoff: time,
+        alignment_method: str = "hourly_aggregated",
+    ) -> IntervalsResponse:
+        self.calls.append(("intervals", delivery_date, cutoff, alignment_method))
         return IntervalsResponse(
             delivery_date=delivery_date,
             metadata=metadata(),
@@ -107,8 +117,13 @@ class FakeService:
             intervals=[],
         )
 
-    async def metrics(self, month_start: date, cutoff: time) -> MetricsResponse:
-        self.calls.append(("metrics", month_start, cutoff))
+    async def metrics(
+        self,
+        month_start: date,
+        cutoff: time,
+        alignment_method: str = "hourly_aggregated",
+    ) -> MetricsResponse:
+        self.calls.append(("metrics", month_start, cutoff, alignment_method))
         return MetricsResponse(
             month=month_start.strftime("%Y-%m"),
             metadata=metadata(),
@@ -139,9 +154,9 @@ async def test_health_is_local_and_valid_routes_parse_parameters() -> None:
     assert intervals.json()["deliveryDate"] == "2026-01-15"
     assert metrics.status_code == 200
     assert service.calls == [
-        ("dashboard", date(2026, 1, 1), time(12)),
-        ("intervals", date(2026, 1, 15), time(12)),
-        ("metrics", date(2026, 1, 1), time(12)),
+        ("dashboard", date(2026, 1, 1), time(12), "hourly_aggregated"),
+        ("intervals", date(2026, 1, 15), time(12), "hourly_aggregated"),
+        ("metrics", date(2026, 1, 1), time(12), "hourly_aggregated"),
     ]
 
 
@@ -157,6 +172,7 @@ async def test_health_is_local_and_valid_routes_parse_parameters() -> None:
         "/api/dashboard?month=2026-01&decision_cutoff_time=noon",
         "/api/intervals?delivery_date=2026-02-30",
         "/api/intervals?delivery_date=0001-01-01",
+        "/api/dashboard?month=2026-01&alignment_method=invalid",
     ],
 )
 async def test_invalid_query_parameters_return_422(path: str) -> None:
@@ -179,7 +195,7 @@ class FailingService:
     def __init__(self, error: Exception) -> None:
         self.error = error
 
-    async def dashboard(self, _month: date, _cutoff: time):
+    async def dashboard(self, _month: date, _cutoff: time, _alignment: str = "hourly_aggregated"):
         raise self.error
 
 

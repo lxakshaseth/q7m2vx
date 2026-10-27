@@ -21,7 +21,7 @@ export function IntervalTable({ intervals }) {
       <div className="section-heading">
         <div>
           <p className="eyebrow">Audit trail</p>
-          <h2 id="table-heading">Half-hourly delivery detail</h2>
+          <h2 id="table-heading">Delivery interval detail</h2>
         </div>
         <p>
           The forecast publication is the individual version selected for that delivery
@@ -29,10 +29,10 @@ export function IntervalTable({ intervals }) {
         </p>
       </div>
 
-      <div className="table-scroll" tabIndex="0" aria-label="Scrollable half-hourly delivery table">
+      <div className="table-scroll" tabIndex="0" aria-label="Scrollable delivery interval table">
         <table>
           <caption>
-            All timestamps are UK local time. A missing forecast is retained as an
+            All timestamps are UK local time. A missing observation is retained as an
             explicit gap and does not enter the accuracy metrics.
           </caption>
           <thead>
