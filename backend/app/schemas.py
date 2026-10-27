@@ -40,6 +40,8 @@ class DataQuality(ApiModel):
     observed_native_forecast_target_count: int = Field(ge=0)
     expected_native_forecast_target_count: int = Field(ge=0)
     selected_native_forecast_count: int = Field(ge=0)
+    complete_actual_pairs_count: int = Field(default=0, ge=0)
+    incomplete_actual_pairs_count: int = Field(default=0, ge=0)
 
 
 class AnalysisMetadata(ApiModel):
@@ -48,6 +50,7 @@ class AnalysisMetadata(ApiModel):
     decision_cutoff_policy: str
     adjustable_demo_assumption: bool = True
     forecast_selection_rule: str
+    alignment_method: str = "hourly_aggregated"
     analysis_resolution: str
     delivery_start_utc: datetime
     delivery_end_utc: datetime

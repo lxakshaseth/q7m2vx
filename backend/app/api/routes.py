@@ -102,6 +102,30 @@ def parse_cutoff_parameter(
     return time(hour=hour, minute=minute)
 
 
+def parse_alignment_parameter(
+    alignment_method: Annotated[
+        str,
+        Query(
+            description=(
+                "Interval alignment method: 'hourly_aggregated' averages two half-hourly "
+                "actuals (:00 and :30) to match native hourly forecasts; 'half_hourly' "
+                "matches exact startTime only."
+            ),
+            examples=["hourly_aggregated", "half_hourly"],
+        ),
+    ] = "hourly_aggregated",
+) -> str:
+    if alignment_method not in ("hourly_aggregated", "half_hourly"):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={
+                "code": "invalid_alignment_method",
+                "message": "alignment_method must be either 'hourly_aggregated' or 'half_hourly'",
+            },
+        )
+    return alignment_method
+
+
 def get_analysis_service(request: Request):
     service = getattr(request.app.state, "analysis_service", None)
     if service is None:
@@ -123,24 +147,27 @@ async def health() -> HealthResponse:
 async def dashboard(
     month_start: Annotated[date, Depends(parse_month_parameter)],
     cutoff: Annotated[time, Depends(parse_cutoff_parameter)],
+    alignment_method: Annotated[str, Depends(parse_alignment_parameter)],
     service=Depends(get_analysis_service),
 ) -> DashboardResponse:
-    return await service.dashboard(month_start, cutoff)
+    return await service.dashboard(month_start, cutoff, alignment_method)
 
 
 @router.get("/intervals", response_model=IntervalsResponse)
 async def intervals(
     delivery_date: Annotated[date, Depends(parse_delivery_date_parameter)],
     cutoff: Annotated[time, Depends(parse_cutoff_parameter)],
+    alignment_method: Annotated[str, Depends(parse_alignment_parameter)],
     service=Depends(get_analysis_service),
 ) -> IntervalsResponse:
-    return await service.intervals(delivery_date, cutoff)
+    return await service.intervals(delivery_date, cutoff, alignment_method)
 
 
 @router.get("/metrics", response_model=MetricsResponse)
 async def metrics(
     month_start: Annotated[date, Depends(parse_month_parameter)],
     cutoff: Annotated[time, Depends(parse_cutoff_parameter)],
+    alignment_method: Annotated[str, Depends(parse_alignment_parameter)],
     service=Depends(get_analysis_service),
 ) -> MetricsResponse:
-    return await service.metrics(month_start, cutoff)
+    return await service.metrics(month_start, cutoff, alignment_method)

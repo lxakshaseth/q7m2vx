@@ -14,9 +14,11 @@ const CUTOFF_TIMES = Array.from({ length: 48 }, (_, index) => {
 export function AnalysisFilters({
   deliveryDate,
   decisionCutoffTime,
+  alignmentMethod,
   isLoading,
   onDeliveryDateChange,
   onDecisionCutoffChange,
+  onAlignmentMethodChange,
   onRefresh,
 }) {
   return (
@@ -25,7 +27,7 @@ export function AnalysisFilters({
         <p className="eyebrow">View controls</p>
         <h2 id="filter-heading">Choose the decision context</h2>
         <p>
-          Results refresh when you change either selection. Times are shown in
+          Results refresh when you change any selection. Times are shown in
           Europe/London.
         </p>
       </div>
@@ -68,6 +70,22 @@ export function AnalysisFilters({
           </select>
         </label>
 
+        <label className="control-field" htmlFor="alignment-method">
+          <span>Cadence alignment</span>
+          <select
+            id="alignment-method"
+            value={alignmentMethod}
+            onChange={(event) => onAlignmentMethodChange(event.target.value)}
+          >
+            <option value="hourly_aggregated">
+              Hourly aggregated (mean of :00 & :30 actuals)
+            </option>
+            <option value="half_hourly">
+              Half-hourly (exact startTime match)
+            </option>
+          </select>
+        </label>
+
         <button className="refresh-button" type="submit" disabled={isLoading}>
           {isLoading ? "Refreshing…" : "Refresh analysis"}
         </button>
@@ -76,8 +94,8 @@ export function AnalysisFilters({
       <p className="assumption-note" id="cutoff-help">
         <span aria-hidden="true">i</span>
         <span>
-          <strong>{decisionCutoffTime} Europe/London</strong> is a configurable demo
-          assumption. The assignment does not specify a required decision time.
+          <strong>{decisionCutoffTime} Europe/London</strong> is an adjustable demo
+          assumption. In <strong>Hourly aggregated</strong> mode, consecutive half-hours are averaged to match the 1-hour forecast window without duplicating forecasts; incomplete pairs are marked missing.
         </span>
       </p>
     </section>

@@ -232,3 +232,97 @@ def build_interval_matches(
             )
         )
     return tuple(matches)
+
+
+def build_hourly_aggregated_matches(
+    expected_hourly_starts: Iterable[datetime],
+    actuals: Sequence[ActualRecord],
+    forecasts: Sequence[SelectedForecast],
+    decision_cutoff_time: time,
+    timezone_name: str = LONDON_TIMEZONE,
+) -> tuple[tuple[IntervalMatch, ...], int, int]:
+    """Aggregate pairs of half-hourly actuals (:00 and :30) into hourly average MW.
+
+    Averaging method:
+        Actual_hourly_MW = (Actual_{H:00} + Actual_{H:30}) / 2.0
+        Actual_publish_time = max(Actual_{H:00}.publish_time, Actual_{H:30}.publish_time)
+
+    Incomplete pair handling:
+        If either H:00 or H:30 is missing, the hourly pair is incomplete. No estimated,
+        interpolated, or single-point average is manufactured. The actual value is
+        recorded as None (missing_actual), cleanly excluding the incomplete delivery hour
+        from error metric denominators while making the gap visible in the audit trail.
+    """
+
+    actual_by_start: dict[datetime, ActualRecord] = {}
+    for actual in actuals:
+        start = _aware_utc(actual.start_time, "actual.start_time")
+        if start in actual_by_start:
+            raise DataValidationError("actual records must be deduplicated before matching")
+        actual_by_start[start] = actual
+
+    forecast_by_start: dict[datetime, SelectedForecast] = {}
+    for forecast in forecasts:
+        start = _aware_utc(forecast.native_start_time, "forecast.native_start_time")
+        if start in forecast_by_start:
+            raise DataValidationError("forecast records must be deduplicated before matching")
+        forecast_by_start[start] = forecast
+
+    zone = _zone(timezone_name)
+    normalized: list[datetime] = []
+    seen: set[datetime] = set()
+    for expected in expected_hourly_starts:
+        start = _aware_utc(expected, "expected_hourly_start")
+        if start.minute != 0 or start.second != 0 or start.microsecond != 0:
+            raise DataValidationError("hourly expected delivery starts must align to :00")
+        if start in seen:
+            raise DataValidationError("expected delivery starts must be unique")
+        seen.add(start)
+        normalized.append(start)
+    normalized.sort()
+
+    matches: list[IntervalMatch] = []
+    complete_pairs = 0
+    incomplete_pairs = 0
+    for hour_start in normalized:
+        local_cutoff, utc_cutoff = decision_cutoff_for_delivery(
+            hour_start, decision_cutoff_time, timezone_name
+        )
+        first_half = actual_by_start.get(hour_start)
+        second_half = actual_by_start.get(hour_start + timedelta(minutes=30))
+
+        agg_actual: ActualRecord | None = None
+        if first_half is not None and second_half is not None:
+            complete_pairs += 1
+            avg_generation = (first_half.generation_mw + second_half.generation_mw) / 2.0
+            latest_publish = max(first_half.publish_time, second_half.publish_time)
+            agg_actual = ActualRecord(
+                start_time=hour_start,
+                publish_time=latest_publish,
+                generation_mw=avg_generation,
+                settlement_date=first_half.settlement_date,
+                settlement_period=first_half.settlement_period,
+            )
+        else:
+            if first_half is not None or second_half is not None:
+                incomplete_pairs += 1
+
+        forecast = forecast_by_start.get(hour_start)
+        if forecast is not None:
+            if forecast.publish_time > utc_cutoff:
+                raise DataValidationError("a selected forecast is later than its decision cutoff")
+            if forecast.decision_cutoff_utc != utc_cutoff:
+                raise DataValidationError("forecast decision cutoff does not match delivery date")
+
+        matches.append(
+            IntervalMatch(
+                delivery_start=hour_start,
+                delivery_start_local=hour_start.astimezone(zone),
+                decision_cutoff_utc=utc_cutoff,
+                decision_cutoff_local=local_cutoff,
+                actual=agg_actual,
+                forecast=forecast,
+            )
+        )
+
+    return tuple(matches), complete_pairs, incomplete_pairs
