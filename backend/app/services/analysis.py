@@ -191,6 +191,7 @@ class AnalysisService:
             delivery_date=delivery_date,
             metadata=bundle.metadata,
             metrics=_metrics_schema(calculate_metrics(internal)),
+            monthly_metrics=bundle.metrics,
             intervals=rows,
         )
 

@@ -67,7 +67,7 @@ function GenerationTooltip({ active, payload }) {
           <dd>
             {point.forecastPublishTime
               ? `${formatDateTime(point.forecastPublishTime)} UK local`
-              : "No forecast matched at this start time"}
+              : "No forecast matched for this delivery hour"}
           </dd>
         </div>
       </dl>
@@ -119,12 +119,11 @@ export function ForecastCharts({ intervals }) {
     <section className="chart-section" aria-labelledby="charts-heading">
       <div className="section-heading">
         <div>
-          <p className="eyebrow">Half-hourly performance</p>
+          <p className="eyebrow">Hourly forecast performance</p>
           <h2 id="charts-heading">Delivery-day profile</h2>
         </div>
         <p>
-          WINDFOR points appear only where their hourly startTime exactly matches the
-          half-hourly actual series. Unmatched :30 intervals remain blank.
+          Two consecutive half-hourly FUELHH actual observations are averaged to match each hourly forecast window.
         </p>
       </div>
 
@@ -133,7 +132,7 @@ export function ForecastCharts({ intervals }) {
           <div className="chart-card__heading">
             <div>
               <h3>Actual generation and selected day-ahead forecast</h3>
-              <p>Half-hourly delivery intervals · MW</p>
+              <p>Hourly delivery intervals · MW</p>
             </div>
           </div>
           {hasGenerationData ? (

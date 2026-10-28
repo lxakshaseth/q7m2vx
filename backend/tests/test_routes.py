@@ -114,6 +114,7 @@ class FakeService:
             delivery_date=delivery_date,
             metadata=metadata(),
             metrics=empty_metrics(48),
+            monthly_metrics=empty_metrics(1488),
             intervals=[],
         )
 
@@ -152,6 +153,7 @@ async def test_health_is_local_and_valid_routes_parse_parameters() -> None:
     assert dashboard.json()["metadata"]["adjustableDemoAssumption"] is True
     assert intervals.status_code == 200
     assert intervals.json()["deliveryDate"] == "2026-01-15"
+    assert intervals.json()["monthlyMetrics"]["expectedIntervalCount"] == 1488
     assert metrics.status_code == 200
     assert service.calls == [
         ("dashboard", date(2026, 1, 1), time(12), "hourly_aggregated"),

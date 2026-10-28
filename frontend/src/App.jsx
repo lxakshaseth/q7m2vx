@@ -7,12 +7,18 @@ import { ForecastCharts } from "./components/ForecastCharts";
 import { IntervalTable } from "./components/IntervalTable";
 import { MetricCard } from "./components/MetricCard";
 import { LoadingDashboard, StatusPanel } from "./components/StatusPanel";
-import { formatMw, formatPercent } from "./utils/format";
+import { formatIsoDateForDisplay, formatMw, formatPercent } from "./utils/format";
 
 const DEFAULT_DELIVERY_DATE = "2026-01-15";
 const DEFAULT_DECISION_CUTOFF = "12:00";
 
-function MetricSummary({ metrics }) {
+function MetricSummary({
+  title,
+  eyebrow,
+  description,
+  metrics,
+  isMonthly = false,
+}) {
   const coverageIsPartial =
     metrics.forecastCoveragePercent !== null && metrics.forecastCoveragePercent < 100;
   const hasMissingIntervals =
@@ -25,15 +31,16 @@ function MetricSummary({ metrics }) {
         : metrics.biasMw < 0
           ? "Negative = under-forecast"
           : "No average bias";
+  const headingId = isMonthly ? "monthly-metrics-heading" : "daily-metrics-heading";
 
   return (
-    <section className="metrics-section" aria-labelledby="metrics-heading">
+    <section className="metrics-section" aria-labelledby={headingId}>
       <div className="section-heading section-heading--metrics">
         <div>
-          <p className="eyebrow">Selected delivery-day results</p>
-          <h2 id="metrics-heading">Forecast accuracy summary</h2>
+          <p className="eyebrow">{eyebrow}</p>
+          <h2 id={headingId}>{title}</h2>
         </div>
-        <p>Metrics use matched actual and cutoff-eligible forecast intervals only.</p>
+        <p>{description}</p>
       </div>
 
       <div className="metric-grid">
@@ -72,7 +79,7 @@ function MetricSummary({ metrics }) {
           detail={
             hasMissingIntervals || coverageIsPartial
               ? "Gaps are excluded; see data quality"
-              : "All available actual intervals covered"
+              : "All expected intervals covered"
           }
           status={coverageIsPartial || hasMissingIntervals ? "amber" : "navy"}
         />
@@ -100,7 +107,7 @@ function CoverageNotice({ metrics, metadata }) {
     return (
       <StatusPanel tone="warning" title="No actual generation is available for this delivery day">
         <p>
-          The backend returned the expected half-hourly grid but no actual wind values.
+          The backend returned the expected delivery grid but no actual wind values.
           Accuracy metrics remain unavailable rather than being estimated.
         </p>
       </StatusPanel>
@@ -127,8 +134,8 @@ function CoverageNotice({ metrics, metadata }) {
           {metrics.matchedIntervalCount} of {metrics.expectedIntervalCount} expected{" "}
           {isHourly ? "hourly" : "half-hourly"} delivery intervals are matched.{" "}
           {isHourly
-            ? "Consecutive half-hours are averaged ((:00 + :30)/2); any delivery hour with an incomplete actual pair is marked missing and excluded from metrics."
-            : "WINDFOR is hourly, so exact start-time matching intentionally leaves intervening :30 rows without a forecast; all gaps remain visible and are excluded from metrics."}
+            ? "Two consecutive half-hourly actual observations are averaged to match each hourly forecast window; any delivery hour with an incomplete actual pair is marked missing and excluded from metrics."
+            : "Values join only where start times match exactly; unmatched intervals remain blank and are excluded from metrics."}
         </p>
       </StatusPanel>
     );
@@ -141,7 +148,7 @@ function EmptyDataNotice({ deliveryDate }) {
   return (
     <StatusPanel tone="warning" title="No delivery intervals were returned">
       <p>
-        The analysis service returned no half-hourly rows for {deliveryDate}. No
+        The analysis service returned no delivery intervals for {deliveryDate}. No
         placeholder values or estimated metrics have been shown. Try refreshing the
         analysis, or select another January delivery date.
       </p>
@@ -243,7 +250,21 @@ export default function App() {
             {hasIntervals ? (
               <>
                 <CoverageNotice metrics={response.metrics} metadata={response.metadata} />
-                <MetricSummary metrics={response.metrics} />
+                {response.monthlyMetrics ? (
+                  <MetricSummary
+                    title="January 2026 monthly accuracy summary"
+                    eyebrow="Full-month benchmark (January 1–31, 2026)"
+                    description={`Calculated across all valid matched hourly delivery intervals in January 2026 using the configured ${response.metadata.decisionCutoffTime} Europe/London cutoff for each date.`}
+                    metrics={response.monthlyMetrics}
+                    isMonthly
+                  />
+                ) : null}
+                <MetricSummary
+                  title={`Selected-day forecast accuracy: ${formatIsoDateForDisplay(deliveryDate)}`}
+                  eyebrow="Selected delivery-day drill-down"
+                  description="Hourly performance for the chosen delivery date (24 delivery windows)."
+                  metrics={response.metrics}
+                />
                 <ForecastCharts intervals={response.intervals} />
                 <IntervalTable intervals={response.intervals} />
               </>

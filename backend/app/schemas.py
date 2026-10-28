@@ -113,6 +113,7 @@ class IntervalsResponse(ApiModel):
     delivery_date: date
     metadata: AnalysisMetadata
     metrics: Metrics
+    monthly_metrics: Metrics | None = None
     intervals: list[IntervalResult]
 
 

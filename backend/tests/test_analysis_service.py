@@ -180,6 +180,8 @@ async def test_day_endpoint_uses_cached_month_and_returns_local_date_only() -> N
         for row in first.intervals
     )
     assert first.metrics.expected_interval_count == 48
+    assert first.monthly_metrics is not None
+    assert first.monthly_metrics.expected_interval_count == 1_488
     assert second.metrics.expected_interval_count == 1_488
     assert len(client.fuel_calls) == 1
     assert len(client.wind_calls) == 1
