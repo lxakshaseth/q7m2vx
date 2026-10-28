@@ -295,3 +295,65 @@ async def test_production_frontend_serving_preserves_api_routes(
     assert health.headers["content-type"].startswith("application/json")
     assert unknown_api.status_code == 404
     assert unknown_api.json()["detail"]["code"] == "api_route_not_found"
+
+
+@pytest.mark.parametrize(
+    "origin",
+    [
+        "https://q7m2vx-kmmv-eosin.vercel.app",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
+)
+async def test_cors_headers_present_for_allowed_origins(origin: str) -> None:
+    """Allowed origins receive Access-Control-Allow-Origin headers on API requests."""
+
+    async with api_client(create_app(analysis_service=FakeService())) as client:
+        response = await client.get("/api/health", headers={"Origin": origin})
+
+    assert response.status_code == 200
+    assert response.headers.get("access-control-allow-origin") == origin
+    assert response.headers.get("access-control-allow-credentials") is None
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/api/health",
+        "/api/intervals?delivery_date=2026-01-15",
+        "/api/dashboard?month=2026-01",
+        "/api/metrics?month=2026-01",
+    ],
+)
+async def test_cors_options_preflight_request(path: str) -> None:
+    """Preflight OPTIONS requests are handled with 200 and required CORS headers."""
+
+    origin = "https://q7m2vx-kmmv-eosin.vercel.app"
+    async with api_client(create_app(analysis_service=FakeService())) as client:
+        response = await client.options(
+            path,
+            headers={
+                "Origin": origin,
+                "Access-Control-Request-Method": "GET",
+                "Access-Control-Request-Headers": "content-type",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.headers.get("access-control-allow-origin") == origin
+    allow_methods = response.headers.get("access-control-allow-methods", "")
+    assert "GET" in allow_methods
+    assert "OPTIONS" in allow_methods
+    assert response.headers.get("access-control-allow-credentials") is None
+
+
+async def test_cors_rejects_unallowed_origin() -> None:
+    """Disallowed origins do not receive Access-Control-Allow-Origin response headers."""
+
+    async with api_client(create_app(analysis_service=FakeService())) as client:
+        response = await client.get(
+            "/api/health", headers={"Origin": "https://unauthorized.example.com"}
+        )
+
+    assert response.status_code == 200
+    assert "access-control-allow-origin" not in response.headers

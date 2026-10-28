@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, AsyncIterator
 
 from fastapi import FastAPI, Request, status
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -32,6 +33,26 @@ from backend.app.services.elexon_client import ElexonClient
 
 
 LOGGER = logging.getLogger(__name__)
+
+DEFAULT_ALLOWED_ORIGINS: tuple[str, ...] = (
+    "https://q7m2vx-kmmv-eosin.vercel.app",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+)
+
+
+def _configured_cors_origins() -> list[str]:
+    """Return explicit production and local development origins permitted by CORS."""
+
+    configured = os.getenv("CORS_ALLOWED_ORIGINS")
+    if not configured:
+        return list(DEFAULT_ALLOWED_ORIGINS)
+
+    origins = [item.strip() for item in configured.split(",") if item.strip()]
+    for default_origin in DEFAULT_ALLOWED_ORIGINS:
+        if default_origin not in origins:
+            origins.append(default_origin)
+    return origins
 
 
 def _error_response(status_code: int, code: str, message: str) -> JSONResponse:
@@ -135,6 +156,13 @@ def create_app(
             "an adjustable demo assumption."
         ),
         lifespan=lifespan,
+    )
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=_configured_cors_origins(),
+        allow_credentials=False,
+        allow_methods=["GET", "OPTIONS"],
+        allow_headers=["*"],
     )
     application.state.analysis_service = service_instance
     application.include_router(router)
