@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, time, timezone
+import math
 from typing import Any
 
 import pytest
@@ -337,3 +338,50 @@ async def test_intervals_separates_day_coverage_from_monthly_coverage() -> None:
     assert day2_resp.day_coverage.incomplete_actual_pairs_count == 1
     assert day2_resp.day_coverage.matched_interval_count == 0
     assert day2_resp.day_coverage.unmatched_interval_count == 24
+
+
+@pytest.mark.asyncio
+async def test_monthly_metrics_are_not_simple_average_of_daily_metrics() -> None:
+    """Prove that monthly MAE/RMSE/WAPE/Bias compute across all observations, not mean of daily KPIs."""
+    client = FakeClient(
+        actuals=[
+            fuel_row("2026-01-01T00:00:00Z", "2026-01-01T00:30:00Z", 100, 1, settlement_date="2026-01-01"),
+            fuel_row("2026-01-01T00:30:00Z", "2026-01-01T01:00:00Z", 100, 2, settlement_date="2026-01-01"),
+            fuel_row("2026-01-02T00:00:00Z", "2026-01-02T00:30:00Z", 1000, 1, settlement_date="2026-01-02"),
+            fuel_row("2026-01-02T00:30:00Z", "2026-01-02T01:00:00Z", 1000, 2, settlement_date="2026-01-02"),
+            fuel_row("2026-01-02T01:00:00Z", "2026-01-02T01:30:00Z", 1000, 3, settlement_date="2026-01-02"),
+            fuel_row("2026-01-02T01:30:00Z", "2026-01-02T02:00:00Z", 1000, 4, settlement_date="2026-01-02"),
+        ],
+        forecasts=[
+            wind_row("2026-01-01T00:00:00Z", "2025-12-31T12:00:00Z", 120),
+            wind_row("2026-01-02T00:00:00Z", "2026-01-01T12:00:00Z", 1010),
+            wind_row("2026-01-02T01:00:00Z", "2026-01-01T12:00:00Z", 1010),
+        ],
+    )
+    service = AnalysisService(client, make_settings())  # type: ignore[arg-type]
+    dashboard = await service.dashboard(date(2026, 1, 1), time(12, 0), alignment_method="hourly_aggregated")
+
+    day1 = next(d for d in dashboard.daily_summaries if d.delivery_date == date(2026, 1, 1))
+    day2 = next(d for d in dashboard.daily_summaries if d.delivery_date == date(2026, 1, 2))
+
+    assert day1.metrics.mae_mw == 20.0
+    assert day1.metrics.wape_percent == 20.0
+    assert day1.metrics.bias_mw == 20.0
+
+    assert day2.metrics.mae_mw == 10.0
+    assert day2.metrics.wape_percent == pytest.approx(20.0 / 2000.0 * 100)
+    assert day2.metrics.bias_mw == 10.0
+
+    # True monthly metrics across all 3 observations
+    monthly = dashboard.metrics
+    assert monthly.matched_interval_count == 3
+    assert monthly.mae_mw == pytest.approx(40.0 / 3.0)
+    assert monthly.rmse_mw == pytest.approx(math.sqrt(200.0))
+    assert monthly.wape_percent == pytest.approx(40.0 / 2100.0 * 100)
+    assert monthly.bias_mw == pytest.approx(40.0 / 3.0)
+
+    # Prove mathematically that monthly metrics are NOT the simple average of daily metrics
+    daily_avg_mae = (day1.metrics.mae_mw + day2.metrics.mae_mw) / 2.0
+    daily_avg_wape = (day1.metrics.wape_percent + day2.metrics.wape_percent) / 2.0
+    assert monthly.mae_mw != daily_avg_mae
+    assert monthly.wape_percent != daily_avg_wape

@@ -111,16 +111,18 @@ subject to publishTime <= day-before Europe/London decision cut-off
 
 A forecast published exactly at the cut-off is eligible; later versions are not. Actual FUELHH revisions are normalised by retaining the latest actual publication for the same half-hour start. Exact duplicates are removed. Conflicting values at the same source key are rejected rather than guessed.
 
-WINDFOR is hourly and FUELHH is half-hourly. The backend joins them only when their normalized UTC `startTime` values are identical. It never copies an hourly value into the intervening `:30` row, so a complete January source response has at most 744 matched intervals out of 1,488 actual intervals and reports 50% forecast coverage.
+WINDFOR is hourly and FUELHH is half-hourly. The platform provides two documented cadence alignments:
+1. **Hourly aggregated alignment (Default)**: Two consecutive half-hourly FUELHH outturn observations (`:00` and `:30`) are averaged `((Actual_00 + Actual_30) / 2.0)` to match each 1-hour WINDFOR delivery window without duplicating forecasts. If either half-hour observation is missing, the hourly pair is incomplete and marked as missing actual (`None`), cleanly excluding it from error metrics.
+2. **Exact interval matching**: Hourly WINDFOR points join only with the identical-start FUELHH observation; intervening `:30` half-hours remain missing without fabricating data.
 
-For a matched half-hour, let error = forecast MW - actual MW and n = matched intervals:
+For matched intervals only, error = forecast MW - actual MW and n = matched intervals:
 
 ~~~text
 MAE  = sum(abs(error)) / n
 RMSE = sqrt(sum(error²) / n)
 Bias = sum(error) / n
 WAPE = 100 × sum(abs(error)) / sum(actual MW)
-Forecast coverage = 100 × matched intervals / available actual intervals
+Forecast coverage = 100 × matched intervals / available actual intervals (complete pairs)
 ~~~
 
 Only matched intervals enter the formulas. With no matches, all accuracy metrics are null. With a zero matched actual denominator, WAPE is null. Positive bias means average over-forecasting.
@@ -255,17 +257,17 @@ Final local verification results:
 
 | Check | Actual result |
 | --- | --- |
-| Backend tests with the Python 3.12 environment | **57 passed in 1.16s** |
-| Frontend production build | Passed; Vite 6.4.5 built 627 modules |
-| Production-style homepage served by FastAPI | HTTP 200; returned the Vite app shell with the correct title |
+| Backend tests with the Python 3.12 environment | **62 passed in 1.36s** |
+| Frontend production build | Passed; Vite 6.4.5 built 627 modules with 0 errors |
+| Production-style homepage served by FastAPI | HTTP 200; returned the Vite app shell with `<title>Wind Forecast Intelligence</title>` |
 | `/api/health` | HTTP 200 JSON |
 | Unknown `/api/*` route | HTTP 404 JSON, not SPA HTML |
-| Live daily analysis | HTTP 200; 48 intervals, 24 matched, 50% coverage for 2026-01-15 at 12:00 |
-| Live January source audit (27 Oct 2026) | 1,488 FUELHH rows; 21,389 raw WINDFOR publication-window rows; 17,711 January-target forecast versions retained; all 744 hourly targets selected |
-| Live January metrics | 1,488 actual intervals, 744 matched, 50% exact-start coverage |
-| Browser rendering | Correct wind dashboard, six KPI cards, charts, audit rows, and source/method notes displayed |
-| Docker Compose configuration | Valid |
-| Docker image build | Not run: Docker Desktop's Linux engine was not running |
+| Live daily analysis (2026-01-15, 12:00 cutoff) | HTTP 200; 24 hourly intervals, 24 complete pairs, 24 matched (100% coverage); MAE 1,189.79 MW, RMSE 1,289.02 MW, WAPE 11.26%, Bias +1,189.79 MW |
+| Live January source audit | 1,488 FUELHH rows (100% WIND); 21,389 raw WINDFOR publication-window rows; 17,711 January-target forecast versions retained; all 744 hourly targets selected |
+| Live January full-month benchmark | 744 hourly targets, 744 complete actual pairs, 744 matched intervals (100% coverage); MAE 2,017.92 MW, RMSE 2,477.04 MW, WAPE 17.42%, Bias +1,806.23 MW |
+| Browser rendering | Correct wind dashboard, monthly benchmark cards, selected-day drill-down, charts, audit panels, and source/method notes displayed |
+| Docker image build & run | **Verified**: `docker build -t wind-forecast-intelligence:prod .` passed; container ran and served on port 8080 with `/api/health`, `/api/intervals`, and `/` verified |
+| Public GitHub repository | **Verified**: `https://github.com/lxakshaseth/q7m2vx` accessible (HTTP 200) |
 
 The Vite build emits its standard advisory that the minified JavaScript chunk exceeds 500 kB. The build is successful; code splitting is a future performance improvement.
 
