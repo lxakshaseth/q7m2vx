@@ -44,6 +44,20 @@ class DataQuality(ApiModel):
     incomplete_actual_pairs_count: int = Field(default=0, ge=0)
 
 
+class CoverageAudit(ApiModel):
+    """Explicit data coverage audit breakdown for a specific period (monthly or daily)."""
+
+    expected_interval_count: int = Field(ge=0)
+    actual_half_hourly_record_count: int = Field(ge=0)
+    complete_actual_pairs_count: int = Field(ge=0)
+    incomplete_actual_pairs_count: int = Field(ge=0)
+    eligible_forecast_count: int = Field(ge=0)
+    matched_interval_count: int = Field(ge=0)
+    unmatched_interval_count: int = Field(ge=0)
+    forecast_coverage_percent: float | None = Field(default=None, ge=0, le=100)
+    coverage_denominator: str = "available actual intervals"
+
+
 class AnalysisMetadata(ApiModel):
     timezone: Literal["Europe/London"] = "Europe/London"
     decision_cutoff_time: str
@@ -99,6 +113,7 @@ class IntervalResult(ApiModel):
 class DailySummary(ApiModel):
     delivery_date: date
     metrics: Metrics
+    coverage: CoverageAudit | None = None
 
 
 class DashboardResponse(ApiModel):
@@ -107,6 +122,7 @@ class DashboardResponse(ApiModel):
     metrics: Metrics
     daily_summaries: list[DailySummary]
     intervals: list[IntervalResult]
+    monthly_coverage: CoverageAudit | None = None
 
 
 class IntervalsResponse(ApiModel):
@@ -115,9 +131,12 @@ class IntervalsResponse(ApiModel):
     metrics: Metrics
     monthly_metrics: Metrics | None = None
     intervals: list[IntervalResult]
+    day_coverage: CoverageAudit | None = None
+    monthly_coverage: CoverageAudit | None = None
 
 
 class MetricsResponse(ApiModel):
     month: str
     metadata: AnalysisMetadata
     metrics: Metrics
+    monthly_coverage: CoverageAudit | None = None

@@ -283,3 +283,57 @@ async def test_service_hourly_aggregated_alignment_averages_actuals_and_handles_
     assert response.metrics.mae_mw == 10.0
     assert response.metrics.bias_mw == 10.0
     assert response.metrics.wape_percent == pytest.approx(10.0 / 150.0 * 100)
+
+
+@pytest.mark.asyncio
+async def test_intervals_separates_day_coverage_from_monthly_coverage() -> None:
+    client = FakeClient(
+        actuals=[
+            fuel_row("2026-01-01T00:00:00Z", "2026-01-01T00:30:00Z", 100, 1, settlement_date="2026-01-01"),
+            fuel_row("2026-01-01T00:30:00Z", "2026-01-01T01:00:00Z", 200, 2, settlement_date="2026-01-01"),
+            fuel_row("2026-01-02T00:00:00Z", "2026-01-02T00:30:00Z", 300, 1, settlement_date="2026-01-02"),
+        ],
+        forecasts=[
+            wind_row("2026-01-01T00:00:00Z", "2025-12-31T12:00:00Z", 150),
+            wind_row("2026-01-02T00:00:00Z", "2026-01-01T12:00:00Z", 350),
+        ],
+    )
+    service = AnalysisService(client, make_settings())  # type: ignore[arg-type]
+
+    # Query Day 1
+    day1_resp = await service.intervals(date(2026, 1, 1), time(12, 0), alignment_method="hourly_aggregated")
+    assert day1_resp.day_coverage is not None
+    assert day1_resp.monthly_coverage is not None
+
+    # Day 1 coverage: strictly 24 hours expected, 2 actual observations, 1 complete pair, 0 incomplete
+    assert day1_resp.day_coverage.expected_interval_count == 24
+    assert day1_resp.day_coverage.actual_half_hourly_record_count == 2
+    assert day1_resp.day_coverage.complete_actual_pairs_count == 1
+    assert day1_resp.day_coverage.incomplete_actual_pairs_count == 0
+    assert day1_resp.day_coverage.eligible_forecast_count == 1
+    assert day1_resp.day_coverage.matched_interval_count == 1
+    assert day1_resp.day_coverage.unmatched_interval_count == 23
+    assert day1_resp.day_coverage.forecast_coverage_percent == 100.0
+    assert "complete pairs" in day1_resp.day_coverage.coverage_denominator
+
+    # Monthly coverage: 744 hours expected, 3 actual observations total, 1 complete pair, 1 incomplete
+    assert day1_resp.monthly_coverage.expected_interval_count == 744
+    assert day1_resp.monthly_coverage.actual_half_hourly_record_count == 3
+    assert day1_resp.monthly_coverage.complete_actual_pairs_count == 1
+    assert day1_resp.monthly_coverage.incomplete_actual_pairs_count == 1
+    assert day1_resp.monthly_coverage.eligible_forecast_count == 2
+    assert day1_resp.monthly_coverage.matched_interval_count == 1
+
+    # Verify no accidental bleed of monthly counts into day counts
+    assert day1_resp.day_coverage.expected_interval_count != day1_resp.monthly_coverage.expected_interval_count
+    assert day1_resp.day_coverage.actual_half_hourly_record_count != day1_resp.monthly_coverage.actual_half_hourly_record_count
+
+    # Query Day 2
+    day2_resp = await service.intervals(date(2026, 1, 2), time(12, 0), alignment_method="hourly_aggregated")
+    assert day2_resp.day_coverage is not None
+    assert day2_resp.day_coverage.expected_interval_count == 24
+    assert day2_resp.day_coverage.actual_half_hourly_record_count == 1
+    assert day2_resp.day_coverage.complete_actual_pairs_count == 0
+    assert day2_resp.day_coverage.incomplete_actual_pairs_count == 1
+    assert day2_resp.day_coverage.matched_interval_count == 0
+    assert day2_resp.day_coverage.unmatched_interval_count == 24

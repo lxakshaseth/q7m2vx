@@ -17,6 +17,7 @@ from backend.app.errors import (
 from backend.app.main import create_app
 from backend.app.schemas import (
     AnalysisMetadata,
+    CoverageAudit,
     DashboardResponse,
     DataQuality,
     IntervalsResponse,
@@ -84,6 +85,34 @@ def metadata() -> AnalysisMetadata:
     )
 
 
+def sample_day_coverage() -> CoverageAudit:
+    return CoverageAudit(
+        expected_interval_count=24,
+        actual_half_hourly_record_count=48,
+        complete_actual_pairs_count=24,
+        incomplete_actual_pairs_count=0,
+        eligible_forecast_count=24,
+        matched_interval_count=24,
+        unmatched_interval_count=0,
+        forecast_coverage_percent=100.0,
+        coverage_denominator="available actual intervals (complete pairs)",
+    )
+
+
+def sample_monthly_coverage() -> CoverageAudit:
+    return CoverageAudit(
+        expected_interval_count=744,
+        actual_half_hourly_record_count=1488,
+        complete_actual_pairs_count=744,
+        incomplete_actual_pairs_count=0,
+        eligible_forecast_count=744,
+        matched_interval_count=744,
+        unmatched_interval_count=0,
+        forecast_coverage_percent=100.0,
+        coverage_denominator="available actual intervals (complete pairs)",
+    )
+
+
 class FakeService:
     def __init__(self) -> None:
         self.calls: list[tuple[str, Any, time, str]] = []
@@ -101,6 +130,7 @@ class FakeService:
             metrics=empty_metrics(),
             daily_summaries=[],
             intervals=[],
+            monthly_coverage=sample_monthly_coverage(),
         )
 
     async def intervals(
@@ -116,6 +146,8 @@ class FakeService:
             metrics=empty_metrics(48),
             monthly_metrics=empty_metrics(1488),
             intervals=[],
+            day_coverage=sample_day_coverage(),
+            monthly_coverage=sample_monthly_coverage(),
         )
 
     async def metrics(
@@ -129,6 +161,7 @@ class FakeService:
             month=month_start.strftime("%Y-%m"),
             metadata=metadata(),
             metrics=empty_metrics(),
+            monthly_coverage=sample_monthly_coverage(),
         )
 
 
@@ -154,6 +187,14 @@ async def test_health_is_local_and_valid_routes_parse_parameters() -> None:
     assert intervals.status_code == 200
     assert intervals.json()["deliveryDate"] == "2026-01-15"
     assert intervals.json()["monthlyMetrics"]["expectedIntervalCount"] == 1488
+    assert intervals.json()["dayCoverage"]["expectedIntervalCount"] == 24
+    assert intervals.json()["dayCoverage"]["actualHalfHourlyRecordCount"] == 48
+    assert intervals.json()["monthlyCoverage"]["expectedIntervalCount"] == 744
+    assert intervals.json()["monthlyCoverage"]["actualHalfHourlyRecordCount"] == 1488
+    assert (
+        intervals.json()["dayCoverage"]["expectedIntervalCount"]
+        != intervals.json()["monthlyCoverage"]["expectedIntervalCount"]
+    )
     assert metrics.status_code == 200
     assert service.calls == [
         ("dashboard", date(2026, 1, 1), time(12), "hourly_aggregated"),

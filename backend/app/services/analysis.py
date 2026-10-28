@@ -6,13 +6,15 @@ import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
+from typing import Sequence
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from backend.app.config import Settings
-from backend.app.domain import IntervalMatch, MetricResult
+from backend.app.domain import ActualRecord, IntervalMatch, MetricResult
 from backend.app.errors import AnalysisConfigurationError
 from backend.app.schemas import (
     AnalysisMetadata,
+    CoverageAudit,
     DashboardResponse,
     DailySummary,
     DataQuality,
@@ -61,6 +63,53 @@ HALF_HOURLY_RESOLUTION_POLICY = (
 RESOLUTION_POLICY = HOURLY_RESOLUTION_POLICY
 
 
+def compute_coverage_audit(
+    matches: Sequence[IntervalMatch],
+    actual_records: Sequence[ActualRecord],
+    alignment_method: str = "hourly_aggregated",
+) -> CoverageAudit:
+    expected_count = len(matches)
+    actual_half_hourly_count = len(actual_records)
+
+    if alignment_method == "hourly_aggregated":
+        complete_pairs = sum(1 for m in matches if m.actual is not None)
+        actual_starts = {r.start_time for r in actual_records}
+        incomplete_pairs = 0
+        for m in matches:
+            has_00 = m.delivery_start in actual_starts
+            has_30 = (m.delivery_start + timedelta(minutes=30)) in actual_starts
+            if (has_00 and not has_30) or (has_30 and not has_00):
+                incomplete_pairs += 1
+        available_actual_intervals = complete_pairs
+        denominator_label = "available actual intervals (complete pairs)"
+    else:
+        complete_pairs = actual_half_hourly_count // 2
+        incomplete_pairs = 0
+        available_actual_intervals = sum(1 for m in matches if m.actual is not None)
+        denominator_label = "available actual intervals"
+
+    eligible_forecasts = sum(1 for m in matches if m.forecast is not None)
+    matched_count = sum(1 for m in matches if m.actual is not None and m.forecast is not None)
+    unmatched_count = expected_count - matched_count
+    coverage_pct = (
+        (100.0 * matched_count / available_actual_intervals)
+        if available_actual_intervals > 0
+        else None
+    )
+
+    return CoverageAudit(
+        expected_interval_count=expected_count,
+        actual_half_hourly_record_count=actual_half_hourly_count,
+        complete_actual_pairs_count=complete_pairs,
+        incomplete_actual_pairs_count=incomplete_pairs,
+        eligible_forecast_count=eligible_forecasts,
+        matched_interval_count=matched_count,
+        unmatched_interval_count=unmatched_count,
+        forecast_coverage_percent=coverage_pct,
+        coverage_denominator=denominator_label,
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class AnalysisBundle:
     month_start: date
@@ -69,6 +118,8 @@ class AnalysisBundle:
     intervals: tuple[IntervalResult, ...]
     daily_summaries: tuple[DailySummary, ...]
     internal_matches: tuple[IntervalMatch, ...]
+    raw_actuals: tuple[ActualRecord, ...]
+    monthly_coverage: CoverageAudit
 
 
 def _next_month(first_day: date) -> date:
@@ -152,6 +203,7 @@ class AnalysisService:
             metrics=bundle.metrics,
             daily_summaries=list(bundle.daily_summaries),
             intervals=list(bundle.intervals),
+            monthly_coverage=bundle.monthly_coverage,
         )
 
     async def metrics(
@@ -165,6 +217,7 @@ class AnalysisService:
             month=month_start.strftime("%Y-%m"),
             metadata=bundle.metadata,
             metrics=bundle.metrics,
+            monthly_coverage=bundle.monthly_coverage,
         )
 
     async def intervals(
@@ -175,6 +228,13 @@ class AnalysisService:
     ) -> IntervalsResponse:
         month_start = delivery_date.replace(day=1)
         bundle = await self._month(month_start, decision_cutoff_time, alignment_method)
+        try:
+            zone = ZoneInfo(self._settings.decision_timezone)
+        except ZoneInfoNotFoundError as exc:
+            raise AnalysisConfigurationError(
+                f"timezone data is unavailable for {self._settings.decision_timezone}"
+            ) from exc
+
         rows = [
             row
             for row in bundle.intervals
@@ -187,12 +247,24 @@ class AnalysisService:
             for row in bundle.internal_matches
             if row.delivery_start_local.date() == delivery_date
         )
+        day_actuals = tuple(
+            row
+            for row in bundle.raw_actuals
+            if row.start_time.astimezone(zone).date() == delivery_date
+        )
+        day_cov = compute_coverage_audit(
+            matches=internal,
+            actual_records=day_actuals,
+            alignment_method=alignment_method,
+        )
         return IntervalsResponse(
             delivery_date=delivery_date,
             metadata=bundle.metadata,
             metrics=_metrics_schema(calculate_metrics(internal)),
             monthly_metrics=bundle.metrics,
             intervals=rows,
+            day_coverage=day_cov,
+            monthly_coverage=bundle.monthly_coverage,
         )
 
     async def _month(
@@ -371,6 +443,11 @@ class AnalysisService:
             warnings=warnings,
         )
         public_intervals = tuple(_interval_schema(row, zone) for row in matches)
+        monthly_coverage = compute_coverage_audit(
+            matches=matches,
+            actual_records=actuals,
+            alignment_method=alignment_method,
+        )
         daily_summaries = tuple(
             DailySummary(
                 delivery_date=day,
@@ -383,6 +460,19 @@ class AnalysisService:
                         )
                     )
                 ),
+                coverage=compute_coverage_audit(
+                    matches=tuple(
+                        row
+                        for row in matches
+                        if row.delivery_start_local.date() == day
+                    ),
+                    actual_records=tuple(
+                        row
+                        for row in actuals
+                        if row.start_time.astimezone(zone).date() == day
+                    ),
+                    alignment_method=alignment_method,
+                ),
             )
             for day in _iter_dates(month_start, month_end)
         )
@@ -393,5 +483,7 @@ class AnalysisService:
             intervals=public_intervals,
             daily_summaries=daily_summaries,
             internal_matches=matches,
+            raw_actuals=actuals,
+            monthly_coverage=monthly_coverage,
         )
         return bundle, matches

@@ -271,7 +271,14 @@ export default function App() {
             ) : (
               <EmptyDataNotice deliveryDate={deliveryDate} />
             )}
-            <DataQualityPanel metadata={response.metadata} metrics={response.metrics} />
+            <DataQualityPanel
+              metadata={response.metadata}
+              metrics={response.metrics}
+              monthlyMetrics={response.monthlyMetrics}
+              dayCoverage={response.dayCoverage}
+              monthlyCoverage={response.monthlyCoverage}
+              deliveryDate={deliveryDate}
+            />
           </div>
         ) : null}
       </main>
