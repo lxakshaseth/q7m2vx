@@ -59,12 +59,12 @@ export function DataQualityPanel({ metadata, metrics }) {
           <QualityMeasure
             label="Actual intervals available"
             value={metrics.actualIntervalCount}
-            detail="Latest actual revision"
+            detail={metadata.alignmentMethod === "hourly_aggregated" ? "Aggregated hourly pairs" : "Latest actual revision"}
           />
           <QualityMeasure
-            label="Eligible forecast intervals"
-            value={metrics.eligibleForecastIntervalCount}
-            detail="Before selected cut-off"
+            label="Raw FUELHH observations"
+            value={quality.sourceActualRecordCount}
+            detail="Half-hourly WIND outturn"
           />
           <QualityMeasure
             label="Matched intervals"

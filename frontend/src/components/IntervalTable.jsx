@@ -21,15 +21,16 @@ export function IntervalTable({ intervals }) {
       <div className="section-heading">
         <div>
           <p className="eyebrow">Audit trail</p>
-          <h2 id="table-heading">Delivery interval detail</h2>
+          <h2 id="table-heading">Hourly delivery detail</h2>
         </div>
         <p>
-          The forecast publication is the individual version selected for that delivery
-          interval, not the decision cut-off.
+          The forecast publication is the individual version selected for that delivery hour,
+          not the decision cut-off. Actual generation is calculated by averaging the matching
+          pair of half-hourly FUELHH observations (:00 and :30).
         </p>
       </div>
 
-      <div className="table-scroll" tabIndex="0" aria-label="Scrollable delivery interval table">
+      <div className="table-scroll" tabIndex="0" aria-label="Scrollable hourly delivery table">
         <table>
           <caption>
             All timestamps are UK local time. A missing observation is retained as an
@@ -39,7 +40,7 @@ export function IntervalTable({ intervals }) {
             <tr>
               <th scope="col">Delivery start<br /><span>UK local</span></th>
               <th scope="col">Selected day-ahead forecast<br /><span>MW</span></th>
-              <th scope="col">Actual generation<br /><span>MW</span></th>
+              <th scope="col">Actual generation (avg)<br /><span>MW</span></th>
               <th scope="col">Forecast error<br /><span>MW</span></th>
               <th scope="col">Absolute error<br /><span>MW</span></th>
               <th scope="col">Forecast publication<br /><span>UK local</span></th>
@@ -50,7 +51,7 @@ export function IntervalTable({ intervals }) {
             {intervals.length === 0 ? (
               <tr>
                 <td className="empty-table-message" colSpan="7">
-                  No half-hourly delivery intervals were returned by the analysis service.
+                  No hourly delivery intervals were returned by the analysis service.
                 </td>
               </tr>
             ) : (
